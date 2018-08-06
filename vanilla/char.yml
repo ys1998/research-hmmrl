@@ -1,0 +1,17 @@
+rnn_size: 512
+num_layers: 2
+input_keep_prob: 0.5
+intra_keep_prob: 0.5
+state_keep_prob: 1.0
+output_keep_prob: 0.5
+batch_size: 64
+timesteps: 50
+grad_clip: 5.0
+lr: 1.0
+lr_decay: 0.8
+eval_freq: 2000000
+decay_after: 13
+num_epochs: 50
+margin_ppl: 1
+shared_embeddings: False
+optimizer: sgd
