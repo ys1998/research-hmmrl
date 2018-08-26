@@ -15,7 +15,7 @@ data = {'test': [] , 'train': [], 'val': []}
 
 import os
 
-""" Generate vocabulary with token as words """
+""" Default function for generating vocabulary with token as words """
 def word_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None):
     if test_data is None:
         # process training and validation tokens
@@ -26,7 +26,8 @@ def word_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None
             # assume that correct vocab is present
             with open(os.path.join(save_dir, 'word_vocab.txt'), 'r', encoding='utf-8') as f:
                 vocab = f.read().split()
-            return {'train': tr, 'val': va, 'test': None}, {'words': dict([(w,i) for i,w in enumerate(vocab)]}
+            return  {'train': tr, 'val': va, 'test': None}, 
+                    {'words': {w,i for i,w in enumerate(vocab)}}
         else:
             # construct new vocab
             vocab = {}; cntr = 0
@@ -34,16 +35,76 @@ def word_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None
                 if w not in vocab:
                     vocab[w] = cntr
                     cntr = cntr+1
+            # add <unk> token
+            vocab['<unk>'] = cntr
             # save vocabulary
             if save_dir is not None:
                 with open(os.path.join(save_dir, 'word_vocab.txt'), 'w', encoding='utf-8') as f:
-                    f.write('\n'.join())
+                    f.write('\n'.join(sorted(vocab.keys(), key=lambda x: vocab[x])))
+            return  {'train': tr, 'val': va, 'test': None}, 
+                    {'words': vocab}
     else:
         # process test tokens
-
-""" Generate vocabulary with token as characters """
-def char_tokenizer(train_data=None, val_data=None, test_data=None):
+        if save_dir is None or not os.path.exists(os.path.join(save_dir, 'word_vocab.txt')):
+            print("Could not find vocabulary file.")
+        else:
+            with open(os.path.join(save_dir, 'word_vocab.txt'), 'r', encoding='utf-8') as f:
+                vocab = f.read().split()
+            # generate mapping
+            vocab = {w:i for i,w in enumerate(vocab)}
+            # process OoV words
+            td = []
+            for w in test_data:
+                if w in vocab:
+                    td += [w]
+                else:
+                    td += ['<unk>']
+            return  {'train':None, 'val':None, 'test':td},
+                    {'words':vocab}
+            
+""" Default function for generating vocabulary with token as characters """
+def char_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None):
     if test_data is None:
         # process training and validation tokens
+        tr = list(train_data.replace('\n', ' '))
+        va = list(val_data.replace('\n', ' '))
+        # build/load vocabulary
+        if save_dir is not None and os.path.exists(os.path.join(save_dir, 'char_vocab.txt')):
+            # assume that correct vocab is present
+            with open(os.path.join(save_dir, 'char_vocab.txt'), 'r', encoding='utf-8') as f:
+                vocab = f.read().split()
+            return  {'train': tr, 'val': va, 'test': None}, 
+                    {'chars': {c,i for i,c in enumerate(vocab)}}
+        else:
+            # construct new vocab
+            vocab = {}; cntr = 0
+            for c in tr+va:
+                if c not in vocab:
+                    vocab[c] = cntr
+                    cntr = cntr+1
+            # add <unk> token
+            vocab['<unk>'] = cntr
+            # save vocabulary
+            if save_dir is not None:
+                with open(os.path.join(save_dir, 'char_vocab.txt'), 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(sorted(vocab.keys(), key=lambda x: vocab[x])))
+            return  {'train': tr, 'val': va, 'test': None}, 
+                    {'chars': vocab}
     else:
         # process test tokens
+        if save_dir is None or not os.path.exists(os.path.join(save_dir, 'char_vocab.txt')):
+            print("Could not find vocabulary file.")
+        else:
+            with open(os.path.join(save_dir, 'char_vocab.txt'), 'r', encoding='utf-8') as f:
+                vocab = f.read().split()
+            # generate mapping
+            vocab = {c:i for i,c in enumerate(vocab)}
+            # process OoV words
+            td = []
+            for c in test_data:
+                if c in vocab:
+                    td += [c]
+                else:
+                    td += ['<unk>']
+            return  {'train':None, 'val':None, 'test':td},
+                    {'words':vocab}
