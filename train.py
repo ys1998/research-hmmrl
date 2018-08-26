@@ -4,7 +4,22 @@ Script for training language models.
 
 import tensorflow as tf
 import numpy as np
-import os, sys, time
+import os, sys, time, yaml, logging
+from munch import munchify
+
+from utils.arguments import train_parser as parser
+from utils.loader import DataLoader, BatchLoader
+
+logging.basicConfig(
+	stream=sys.stdout,
+	format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+	level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+tf.reset_default_graph()
+np.random.seed(1)
+tf.set_random_seed(1)
 
 def main():
 	"""The main method of script."""
@@ -17,11 +32,10 @@ def main():
 		os.makedirs(args.save_dir)
 	if not os.path.exists(args.best_dir):
 		os.makedirs(args.best_dir)
-	logger.info(args)
 	train(
             args.data_dir, 
-            token='word', 
-            convert=False, 
+			args.save_dir,
+			args.best_dir,
             batch_size=config.batch_size,
             timesteps = config.timesteps,
             num_epochs = config.num_epochs
@@ -47,25 +61,25 @@ def restore_model(sess, model, save_dir):
 	return steps_done
 
 
-def train(data_dir, token, convert, batch_size, timesteps, num_epochs, save_dir):
+def train(data_dir, save_dir, best_dir, batch_size, timesteps, num_epochs):
 	"""Prepare the data and begin training."""
 	# Load the text and vocabulary
-	train_data_loader = DataLoader(data_dir, split='train', convert=convert, token=token)
-    val_data_loader = DataLoader(data_dir, split='valid', convert=convert, token=token)
+	data_loader = DataLoader(data_dir, mode='train', tokenize_func=None, encode_func=None)
 	# Prepare batches for training and validation
-	train_batch_loader = BatchLoader(train_data_loader, batch_size=batch_size, timesteps=timesteps)
-    val_batch_loader = BatchLoader(val_data_loader, batch_size=batch_size, timesteps=timesteps)
+	train_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='train')
+	val_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='val')
 
     # Run on GPU by default
-    cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
-    cfg_proto.gpu_options.allow_growth = True
+	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
+	cfg_proto.gpu_options.allow_growth = True
 
 	with tf.Session(config=cfg_proto) as sess:
 		# Initialize weights
 		initializer = tf.random_uniform_initializer(-0.05, 0.05)
 		with tf.variable_scope("model", reuse=None, initializer=initializer):
 			# Build model here
-            model = Model()
+			# Pass necessary arguments
+			model = Model()
 		steps_done = restore_model(sess, model, save_dir)
 		logger.info("Loaded %d completed steps", steps_done)
         # Create summary writer
@@ -73,94 +87,69 @@ def train(data_dir, token, convert, batch_size, timesteps, num_epochs, save_dir)
         # Finalize graph to prevent memory leaks
 		sess.graph.finalize()
         # Find starting epoch
-		start_epoch = model.epoch.eval()
+		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
 		for epoch in range(start_epoch, num_epochs):
+			logger.info("Epoch %d / %d", epoch+1, num_epochs)
             # train
-			run_epoch(sess, model, args, batch_loader, epoch)
-            # validate
+			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir)
+			# validate
+			run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
 
-def run_epoch(sess, model, batch_loader, epoch, mode='train'):
-	"""Run one epoch of training/validation"""
-	best_ppl = model.best_ppl.eval()
-	last_ppl_update = model.last_ppl_update.eval()
-	margin_ppl = model.margin_ppl.eval()
+def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None):
+	"""Run one epoch of training."""
 	# Reset batch pointer back to zero
 	batch_loader.reset_batch_pointer()
 	# Start from an empty RNN state
 	states = sess.run(model.initial_states)
 
-	start_batch = model.global_step.eval() % batch_loader.num_batches
-	if start_batch != 0:
-		logger.info("Starting from batch %d / %d", start_batch, batch_loader.num_batches)
-		batch_loader.pointer += start_batch
+	if mode == 'train':
+		start_batch = model.global_step.eval() % batch_loader.num_batches
+		if start_batch != 0:
+			logger.info("Starting from batch %d / %d", start_batch, batch_loader.num_batches)
+			batch_loader.pointer += start_batch
+	elif mode == 'val':
+		acc_metric = 0.0
+		start_batch = 0
 
 	for b in range(start_batch, batch_loader.num_batches):
-		start = time.time()
-        if mode == 'train':
-            x, y = batch_loader.next_batch()
-            # Feed initial states
-            states = sess.run(model.initial_states)
-            feed = {model.input_data: x,
-                    model.targets: y,
-                    model.initial_states: states}
-            # carry out the training step
-		    train_loss, l1, states, _ = sess.run([model.final_cost,
-											 model.cost,
-											 model.final_states,
-											 model.train_op], feed)
-        else if mode == 'val':
-            train_loss, l1, states, _ = sess.run([model.final_cost,
-											 model.cost,
-											 model.final_states,
-											 model.train_op], feed)
-		end = time.time()
-		# print the result so far on terminal
-		batch_num = epoch * batch_loader.num_batches + b
-		total_num = args.config.num_epochs * batch_loader.num_batches
-		logger.info("Epoch %d, %d / %d. Loss - %.4f, Time - %.2f", epoch, batch_num, total_num, train_loss, end - start)
+		x, y = batch_loader.next_batch()
 
-		# Save after `args.eval_freq` batches or at the very end
-		if batch_num != 0 and (batch_num % args.config.eval_freq == 0 or b == batch_loader.num_batches - 1):
-			ppl = evaluate(sess, model_eval, batch_loader.eval_data, args)
-			logger.info("Perplexity after %d steps - %.4f", batch_num, ppl)
+		if mode == 'train':
+			sess.run(tf.assign_add(model.global_step, 1))
+			start = time.time()
+			# initialize/update the learning rate here
+			lr = 1.0
+			feed = {model._input: x, model._output: y, model._states: states, model._lr: lr}
+			loss, states, _ = sess.run([model.loss, model.final_states, model.train_op], feed)
+			end = time.time()
+			# print the result so far on terminal
+			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
 
-			# Update rules for best_ppl / training schedule
-			logger.info("Best ppl is %.4f, ppl < best_ppl is %s", model.best_ppl.eval(), str(ppl < best_ppl))
-			if ppl < best_ppl:
-				logger.info("Saving Best Model")
-				# Storing perplexity and in TensorFlow variable and Python variable
-				best_ppl = ppl
-				sess.run(model.best_ppl_assign, feed_dict={model.best_ppl_new: ppl})
-				if margin_ppl - ppl > args.config.margin_ppl:
-					# In the case there has been a perplexity change of more than `margin_ppl`
-					# update the `last_ppl_update` and `margin_ppl` values
-					# This indicates a "significant" change in ppl
-					logger.info("Updating margin_ppl, Change of %.4f", margin_ppl - ppl)
-					last_ppl_update = batch_num
-					margin_ppl = ppl
-					sess.run(model.last_ppl_update_assign, feed_dict={model.last_ppl_update_new: batch_num})
-					sess.run(model.margin_ppl_assign, feed_dict={model.margin_ppl_new: ppl})
-				# Saving the best model
-				checkpoint_path = os.path.join(args.best_dir, "lm.ckpt")
-				model.best_saver.save(sess, checkpoint_path, global_step=model.global_step, write_meta_graph=False)
-			# elif batch_num - last_ppl_update > args.config.eval_freq * 30:
-			#     logger.info("Decaying Learning Rate")
-			#     sess.run(model.lr_decay)
-			#     # Updating `last_ppl_update` value to prevent continuous decay, keeping same `margin_ppl`
-			#     last_ppl_update = batch_num
-			#     sess.run(model.last_ppl_update_assign, feed_dict={model.last_ppl_update_new: batch_num})
-			# Learning rate decay schedule
-			else:
-				# Decay learning rate whenever ppl is greater than best_ppl so far
-				sess.run(model.lr_decay)
-				logger.info("decaying lr after %d epochs to %.4f" % (model.epoch.eval(), model.lr.eval()))
-
-			checkpoint_path = os.path.join(args.save_dir, "lm.ckpt")
+		elif mode == 'val':
+			feed = {model._input: x, model._output: y, model._states: states}
+			metric = sess.run([model.eval_metric], feed)
+			# accumulate evaluation metric here
+			acc_metric += metric
+		
+	# After epoch is complete
+	if mode == 'val':
+		# find metric from accumulated metrics of mini batches
+		final_metric = acc_metric/batch_loader.num_batches
+		best_metric = model.best_metric.eval()
+		logger.info("Evaluation metric = %.4f", final_metric)
+		logger.info("Best metric = %.4f", best_metric)
+		if final_metric < best_metric:
+			logger.info("Metric improved, saving best model")
+			# Store best metric in the model
+			sess.run(tf.assign(model.best_metric, final_metric))
+			# Save the model
+			checkpoint_path = os.path.join(best_dir, "lm.ckpt")
 			model.saver.save(sess, checkpoint_path, global_step=model.global_step, write_meta_graph=False)
-
-	sess.run(model.epoch_incr)
-
+	elif mode == 'train':
+		# Save the model
+		checkpoint_path = os.path.join(save_dir, "lm.ckpt")
+		model.saver.save(sess, checkpoint_path, global_step=model.global_step, write_meta_graph=False)
+		
 if __name__ == '__main__':
-
 	main()
