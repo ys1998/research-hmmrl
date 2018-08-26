@@ -12,4 +12,14 @@ encoding = {
 
 Here the keys represent embeddings (word-, char-, morpheme- etc.) and the list
 of integers represent constituent members from vocabular[y|ies]
+
+OoV words can be handled either here or in the tokenizer.
 """
+
+""" Default word encoder """
+def word_encoder(tokens, vocabs):
+    return {0: [vocabs['words'][w] for w in tokens], 1:None}
+
+""" Default character encoder """
+def char_encoder(tokens, vocabs):
+    return {0:None, 1: [vocabs['chars'][c] for c in tokens]}
