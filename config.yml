@@ -1,0 +1,31 @@
+batch_size: 20
+timesteps: 35
+num_dims: 1100
+n_layers: 2
+word_vocab_size: 53478 ##
+word_dims: 650
+char_vocab_size: 575 ##
+char_dims: 15
+num_units: 400
+lstm_clip: 10.0
+grad_clip: 5.0
+max_word_length: 15 ##
+kernel_sizes:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+kernel_features:
+  - 50
+  - 100
+  - 150
+  - 200
+  - 200
+  - 200
+  - 200
+epochs: 30
+initial_learning_rate: 1.0
+lr_decay: 0.5

@@ -7,8 +7,14 @@ import numpy as np
 import os, sys, time, yaml, logging
 from munch import munchify
 
+# Import model
+from models.HybridEmbeddings import HybridEmbeddings as Model
+# Import other utilities
 from utils.arguments import train_parser as parser
 from utils.loader import DataLoader, BatchLoader
+# Import tokenizer and encoder
+from utils.tokenize import lmmrl_tokenizer
+from utils.encode import lmmrl_encoder
 
 logging.basicConfig(
 	stream=sys.stdout,
@@ -26,6 +32,7 @@ def main():
 	args = parser.parse_args()
 	with open(args.config_file, 'r') as stream:
 		config = munchify(yaml.load(stream))
+		print(config)
 	args.save_dir = os.path.join(args.save_dir, args.job_id)
 	args.best_dir = os.path.join(args.best_dir, args.job_id)
 	if not os.path.exists(args.save_dir):
@@ -36,9 +43,7 @@ def main():
             args.data_dir, 
 			args.save_dir,
 			args.best_dir,
-            batch_size=config.batch_size,
-            timesteps = config.timesteps,
-            num_epochs = config.num_epochs
+            config
             )
 
 # Restores pretrained model from disk 
@@ -61,10 +66,14 @@ def restore_model(sess, model, save_dir):
 	return steps_done
 
 
-def train(data_dir, save_dir, best_dir, batch_size, timesteps, num_epochs):
+def train(data_dir, save_dir, best_dir, config):
 	"""Prepare the data and begin training."""
+	# Create variables
+	batch_size = config.batch_size
+	timesteps = config.timesteps
+	num_epochs = config.epochs
 	# Load the text and vocabulary
-	data_loader = DataLoader(data_dir, mode='train', tokenize_func=None, encode_func=None)
+	data_loader = DataLoader(data_dir, mode='train', tokenize_func=lmmrl_tokenizer, encode_func=lmmrl_encoder)
 	# Prepare batches for training and validation
 	train_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='train')
 	val_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='val')
@@ -79,7 +88,7 @@ def train(data_dir, save_dir, best_dir, batch_size, timesteps, num_epochs):
 		with tf.variable_scope("model", reuse=None, initializer=initializer):
 			# Build model here
 			# Pass necessary arguments
-			model = Model()
+			model = Model(config)
 		steps_done = restore_model(sess, model, save_dir)
 		logger.info("Loaded %d completed steps", steps_done)
         # Create summary writer
@@ -89,14 +98,19 @@ def train(data_dir, save_dir, best_dir, batch_size, timesteps, num_epochs):
         # Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
+		lr = config.initial_learning_rate
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
             # train
-			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir)
+			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir, lr=lr)
 			# validate
 			run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
+			# fine-tune
+			#
+			# update learning rate
+			lr *= config.lr_decay
 
-def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None):
+def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):
 	"""Run one epoch of training."""
 	# Reset batch pointer back to zero
 	batch_loader.reset_batch_pointer()
@@ -113,13 +127,15 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 		start_batch = 0
 
 	for b in range(start_batch, batch_loader.num_batches):
-		x, y = batch_loader.next_batch()
+		x_org, y_org = batch_loader.next_batch()
+		x = model.prepare_input(x_org)
+		y = model.prepare_input(y_org)
 
 		if mode == 'train':
-			sess.run(tf.assign_add(model.global_step, 1))
+			# sess.run(tf.assign_add(model.global_step, 1))
 			start = time.time()
-			# initialize/update the learning rate here
-			lr = 1.0
+			# can update the learning rate here, if required
+			# lr = 1.0
 			feed = {model._input: x, model._output: y, model._states: states, model._lr: lr}
 			loss, states, _ = sess.run([model.loss, model.final_states, model.train_op], feed)
 			end = time.time()
@@ -130,12 +146,12 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			feed = {model._input: x, model._output: y, model._states: states}
 			metric = sess.run([model.eval_metric], feed)
 			# accumulate evaluation metric here
-			acc_metric += metric
+			acc_metric += np.log(metric)
 		
 	# After epoch is complete
 	if mode == 'val':
 		# find metric from accumulated metrics of mini batches
-		final_metric = acc_metric/batch_loader.num_batches
+		final_metric = np.exp(acc_metric/batch_loader.num_batches)
 		best_metric = model.best_metric.eval()
 		logger.info("Evaluation metric = %.4f", final_metric)
 		logger.info("Best metric = %.4f", best_metric)

@@ -65,7 +65,7 @@ class BatchLoader(object):
 			print("Not enough data. Make seq_length and batch_size small.")
 			sys.exit()
 
-		xdata = data_loader.data[:num_batches * batch_size * timesteps]
+		xdata = self.data[:num_batches * batch_size * timesteps]
 		ydata = np.copy(xdata)
 
 		# Building output tokens - next token predictors
@@ -83,8 +83,8 @@ class BatchLoader(object):
 		self.ydata = np.asarray(data_loader.encode_func(ydata, data_loader.vocabs))
 
 		# Splitting data into batches.
-		self.x_batches = np.split(xdata.reshape(batch_size, -1), num_batches, 1)
-		self.y_batches = np.split(ydata.reshape(batch_size, -1), num_batches, 1)
+		self.x_batches = np.split(self.xdata.reshape(batch_size, -1), num_batches, 1)
+		self.y_batches = np.split(self.ydata.reshape(batch_size, -1), num_batches, 1)
 
 		self.pointer = 0
 

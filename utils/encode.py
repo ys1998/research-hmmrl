@@ -18,8 +18,28 @@ OoV words can be handled either here or in the tokenizer.
 
 """ Default word encoder """
 def word_encoder(tokens, vocabs):
-    return {0: [vocabs['words'][w] for w in tokens], 1:None}
+    return [{0: vocabs['words'][w], 1:None} for w in tokens]
 
 """ Default character encoder """
 def char_encoder(tokens, vocabs):
-    return {0:None, 1: [vocabs['chars'][c] for c in tokens]}
+    return [{0:None, 1: vocabs['chars'][c]} for c in tokens]
+
+""" Custom encoder for LMMRL """
+def lmmrl_encoder(tokens, vocabs):
+    encoded_lst = []
+    for w in tokens:
+        # encode words
+        encoding = {1:None}
+        if w not in vocabs['words']:
+            encoding[0] = vocabs['words']['<unk>']
+        else:
+            encoding[0] = vocabs['words'][w]
+        # encode characters
+        encoding[2] = []
+        for c in w:
+            if c not in vocabs['chars']:
+                encoding[2].append(vocabs['chars']['<unk>'])
+            else:
+                encoding[2].append(vocabs['chars'][c])
+        encoded_lst.append(encoding)
+    return encoded_lst

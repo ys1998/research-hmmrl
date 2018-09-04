@@ -9,6 +9,7 @@ Every model must specify the following members/methods:
     - _lr
 
 - Other variables
+    - graph
     - initial_states
     - final_states
     - train_op
@@ -21,5 +22,7 @@ Every model must specify the following members/methods:
 
 - Methods
     - __init__
+    - prepare_input
+    - prepare_output
 
 """
