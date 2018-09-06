@@ -101,7 +101,7 @@ class HybridEmbeddings(object):
                 output = tf.matmul(inputs, w) + b
             with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE):
                 logits = tf.matmul(output, self.word_embedding, transpose_b=True)
-                self.prediction = tf.nn.softmax(logits, axis=1, name="prediction")
+                self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
                 self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name="loss")
 
             # Optimizer
