@@ -2,13 +2,7 @@
 Model specifications.
 
 Every model must specify the following members/methods:
-- Placeholders
-    - _input
-    - _output
-    - _states
-    - _lr
-
-- Other variables
+- Variables
     - graph
     - initial_states
     - final_states
@@ -21,8 +15,7 @@ Every model must specify the following members/methods:
     - saver
 
 - Methods
-    - __init__
-    - prepare_input
-    - prepare_output
+    - __init__(config)
+    - forward(sess, x, y=None, mode='train'/'val'/'test')
 
 """

@@ -82,19 +82,18 @@ def train(data_dir, save_dir, best_dir, config):
 	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
 	cfg_proto.gpu_options.allow_growth = True
 
-	with tf.Session(config=cfg_proto) as sess:
-		# Initialize weights
-		initializer = tf.random_uniform_initializer(-0.05, 0.05)
-		with tf.variable_scope("model", reuse=None, initializer=initializer):
-			# Build model here
-			# Pass necessary arguments
-			model = Model(config)
+	# Initialize weights
+	initializer = tf.random_uniform_initializer(-0.05, 0.05)
+	with tf.variable_scope("model", reuse=None, initializer=initializer):
+		# Build model here
+		# Pass necessary arguments
+		model = Model(config)
+
+	with tf.Session(config=cfg_proto, graph=model.graph) as sess:
 		steps_done = restore_model(sess, model, save_dir)
 		logger.info("Loaded %d completed steps", steps_done)
         # Create summary writer
 		train_writer = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
-        # Finalize graph to prevent memory leaks
-		sess.graph.finalize()
         # Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
@@ -127,24 +126,24 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 		start_batch = 0
 
 	for b in range(start_batch, batch_loader.num_batches):
-		x_org, y_org = batch_loader.next_batch()
-		x = model.prepare_input(x_org)
-		y = model.prepare_input(y_org)
+		x, y = batch_loader.next_batch()
+		# x = model.prepare_input(x_org)
+		# y = model.prepare_input(y_org)
 
 		if mode == 'train':
 			# sess.run(tf.assign_add(model.global_step, 1))
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
-			feed = {model._input: x, model._output: y, model._states: states, model._lr: lr}
-			loss, states, _ = sess.run([model.loss, model.final_states, model.train_op], feed)
+			# feed = {model._input: x, model._output: y, model._states: states, model._lr: lr}
+			loss, states, _ = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
 
 		elif mode == 'val':
-			feed = {model._input: x, model._output: y, model._states: states}
-			metric = sess.run([model.eval_metric], feed)
+			# feed = {model._input: x, model._output: y, model._states: states}
+			metric = model.forward(sess, x, y, states, mode=mode)
 			# accumulate evaluation metric here
 			acc_metric += np.log(metric)
 		

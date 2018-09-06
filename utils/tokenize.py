@@ -170,4 +170,4 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
             # generate mapping
             vocabs['chars'] = {w:i for i,w in enumerate(vocab)}
 
-            return  {'train':None, 'val':None, 'test':td}, vocabs
+            return  {'train':None, 'val':None, 'test':test_data.split()}, vocabs

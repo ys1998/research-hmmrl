@@ -9,7 +9,7 @@ char_dims: 15
 num_units: 400
 lstm_clip: 10.0
 grad_clip: 5.0
-max_word_length: 15 ##
+max_word_length: 255 ## 15
 kernel_sizes:
   - 1
   - 2
