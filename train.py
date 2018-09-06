@@ -35,7 +35,7 @@ def main():
 		print(config)
 	args.save_dir = os.path.join(args.save_dir, args.job_id)
 	args.best_dir = os.path.join(args.best_dir, args.job_id)
-	if not os.path.exists(args.save_dir):train_writer
+	if not os.path.exists(args.save_dir):
 		os.makedirs(args.save_dir)
 	if not os.path.exists(args.best_dir):
 		os.makedirs(args.best_dir)
@@ -56,7 +56,7 @@ def restore_model(sess, model, save_dir):
 			tf.global_variables_initializer(),
 			tf.local_variables_initializer()
 		])
-	return steps_donetrain_writer
+	return steps_done 
 
 
 def train(data_dir, save_dir, best_dir, config):
