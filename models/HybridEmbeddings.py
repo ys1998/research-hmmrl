@@ -42,8 +42,8 @@ class HybridEmbeddings(object):
             with tf.variable_scope("convolution", reuse=tf.AUTO_REUSE):
                 feat_vecs = []
                 for k, n_ft in zip(config.kernel_sizes, config.kernel_features):
-                    fltr = tf.get_variable("filter_%d" % k, [config.char_vocab_size, k, 1, n_ft])
-                    out_tensor = tf.nn.conv2d(char_vecs, fltr, strides=[1,1,1,1], padding="SAME")
+                    fltr = tf.get_variable("filter_%d" % k, [config.char_dims, k, 1, n_ft])
+                    out_tensor = tf.nn.conv2d(char_vecs, fltr, strides=[1,config.char_dims,1,1], padding="SAME")
                     # max-over time pooling
                     pooled_tensor = tf.nn.max_pool(out_tensor, 
                                                     ksize=[1, 1, config.max_word_length, 1],
@@ -54,7 +54,7 @@ class HybridEmbeddings(object):
                     squeezed_tensor = tf.squeeze(pooled_tensor)
                     feat_vecs.append(squeezed_tensor)
                 # concatenate the features obtained
-                feature_vec = tf.concat(feat_vecs, axis=2)
+                feature_vec = tf.concat(feat_vecs, axis=1)
                 self._input = tf.reshape(feature_vec, [config.batch_size, config.timesteps, config.num_dims])
 
             # Highway network
@@ -95,14 +95,12 @@ class HybridEmbeddings(object):
                 targets = tf.reshape(self._output, [-1]) 
 
             # Projection and softmax layer
-            with tf.variable_scope("projection", reuse=tf.AUTO_REUSE):
-                w = tf.get_variable("p_w", [config.num_units, config.word_dims])
-                b = tf.get_variable("p_b", config.word_dims)
-                output = tf.matmul(inputs, w) + b
+            output = tf.layers.dense(inputs, config.word_dims, name="projection")
             with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE):
                 logits = tf.matmul(output, self.word_embedding, transpose_b=True)
                 self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
                 self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name="loss")
+                self.loss = tf.reduce_mean(self.loss)
 
             # Optimizer
             with tf.variable_scope("optimizer", reuse=tf.AUTO_REUSE):
@@ -121,10 +119,6 @@ class HybridEmbeddings(object):
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
         # Generate indices and lengths for obtaining word vectors
-
-        print(states.shape, x.shape, y.shape)
-
-
         lengths = []; idx = []
         for b in x:
             for w in b:

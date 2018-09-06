@@ -98,6 +98,8 @@ def train(data_dir, save_dir, best_dir, config):
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
 		lr = config.initial_learning_rate
+		# Finalize graph to prevent memory leakage
+		sess.graph.finalize()
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
             # train
@@ -108,6 +110,9 @@ def train(data_dir, save_dir, best_dir, config):
 			#
 			# update learning rate
 			lr *= config.lr_decay
+			# write summaries to file
+			merged = tf.summary.merge_all()
+			sess.run(merged)
 
 def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):
 	"""Run one epoch of training."""
@@ -127,22 +132,17 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 
 	for b in range(start_batch, batch_loader.num_batches):
 		x, y = batch_loader.next_batch()
-		# x = model.prepare_input(x_org)
-		# y = model.prepare_input(y_org)
 
 		if mode == 'train':
-			# sess.run(tf.assign_add(model.global_step, 1))
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
-			# feed = {model._input: x, model._output: y, model._states: states, model._lr: lr}
 			loss, states, _ = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
 
 		elif mode == 'val':
-			# feed = {model._input: x, model._output: y, model._states: states}
 			metric = model.forward(sess, x, y, states, mode=mode)
 			# accumulate evaluation metric here
 			acc_metric += np.log(metric)
