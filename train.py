@@ -35,16 +35,11 @@ def main():
 		print(config)
 	args.save_dir = os.path.join(args.save_dir, args.job_id)
 	args.best_dir = os.path.join(args.best_dir, args.job_id)
-	if not os.path.exists(args.save_dir):
+	if not os.path.exists(args.save_dir):train_writer
 		os.makedirs(args.save_dir)
 	if not os.path.exists(args.best_dir):
 		os.makedirs(args.best_dir)
-	train(
-            args.data_dir, 
-			args.save_dir,
-			args.best_dir,
-            config
-            )
+	train(args.data_dir, args.save_dir,	args.best_dir, config)
 
 # Restores pretrained model from disk 
 def restore_model(sess, model, save_dir):
@@ -54,16 +49,14 @@ def restore_model(sess, model, save_dir):
 		model.saver.restore(sess, ckpt.model_checkpoint_path)
 		steps_done = int(ckpt.model_checkpoint_path.split('-')[-1])
 		# Since local variables are not saved
-		sess.run([
-			tf.local_variables_initializer()
-		])
+		sess.run([tf.local_variables_initializer()])
 	else:
 		steps_done = 0
 		sess.run([
 			tf.global_variables_initializer(),
 			tf.local_variables_initializer()
 		])
-	return steps_done
+	return steps_donetrain_writer
 
 
 def train(data_dir, save_dir, best_dir, config):
@@ -93,23 +86,26 @@ def train(data_dir, save_dir, best_dir, config):
 		steps_done = restore_model(sess, model, save_dir)
 		logger.info("Loaded %d completed steps", steps_done)
         # Create summary writer
-		train_writer = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
+		_ = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
         # Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
 		lr = config.initial_learning_rate
 		# Finalize graph to prevent memory leakage
 		sess.graph.finalize()
+		last_val_ppl = 1000
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
             # train
 			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir, lr=lr)
 			# validate
-			run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
-			# fine-tune
-			#
-			# update learning rate
-			lr *= config.lr_decay
+			val_ppl = run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
+			# fine-tune after every epoch
+			model.fine_tune(sess)
+			# update learning rate conditionally
+			if val_ppl >= last_val_ppl:
+				lr *= config.lr_decay
+			last_val_ppl = val_ppl
 			# write summaries to file
 			merged = tf.summary.merge_all()
 			sess.run(merged)
@@ -161,6 +157,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			# Save the model
 			checkpoint_path = os.path.join(best_dir, "lm.ckpt")
 			model.saver.save(sess, checkpoint_path, global_step=model.global_step, write_meta_graph=False)
+		return final_metric
 	elif mode == 'train':
 		# Save the model
 		checkpoint_path = os.path.join(save_dir, "lm.ckpt")

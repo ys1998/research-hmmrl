@@ -29,6 +29,10 @@ class HybridEmbeddings(object):
                 self.word_embedding = tf.get_variable("word", [config.word_vocab_size, config.word_dims])
                 self.char_embedding = tf.get_variable("char", [config.char_vocab_size, config.char_dims])
 
+            ###############################################################################################
+            # Generating word vectors from constituent character vectors
+            ###############################################################################################
+
             # Extract character vectors from embedding
             with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE):
                 char_vecs = tf.gather(self.char_embedding, self._idx)
@@ -57,11 +61,20 @@ class HybridEmbeddings(object):
                 feature_vec = tf.concat(feat_vecs, axis=1)
                 self._input = tf.reshape(feature_vec, [config.batch_size, config.timesteps, config.num_dims])
 
-            # Highway network
+            ###############################################################################################
+            # Passing the generated word vectors to an LSTM network after transformations
+            ###############################################################################################
+
+            # Two-layer highway network
             with tf.variable_scope("highway", reuse=tf.AUTO_REUSE):
+                # first layer
                 x1 = tf.layers.dense(self._input, config.num_dims, activation=tf.nn.relu)
                 t1 = tf.layers.dense(self._input, config.num_dims, activation=tf.nn.sigmoid)
-                mod_input = x1*t1 + self._input*(1-t1)
+                intermediate_x = x1*t1 + self._input*(1-t1)
+                # second layer
+                x2 = tf.layers.dense(intermediate_x, config.num_dims, activation=tf.nn.relu)
+                t2 = tf.layers.dense(intermediate_x, config.num_dims, activation=tf.nn.sigmoid)
+                mod_input = x2*t2 + x1*(1-t2)
 
             # LSTM network
             with tf.variable_scope("lstm", reuse=tf.AUTO_REUSE):
@@ -116,6 +129,11 @@ class HybridEmbeddings(object):
             # Saver
             self.saver = tf.train.Saver(max_to_keep=3)
 
+            ###############################################################################################
+            # Fine tuning operations
+            ###############################################################################################
+            # TODO
+
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
         # Generate indices and lengths for obtaining word vectors
@@ -149,4 +167,8 @@ class HybridEmbeddings(object):
             })
         elif mode == 'test':
             pass
-         
+
+    def fine_tune(self, sess):
+        """ Perform Attract-Preserve fine-tuning on embedding """
+        # TODO
+        pass
