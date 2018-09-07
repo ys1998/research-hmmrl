@@ -75,15 +75,15 @@ def train(data_dir, save_dir, best_dir, config):
 	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
 	cfg_proto.gpu_options.allow_growth = True
 
-	# Initialize weights
-	initializer = tf.random_uniform_initializer(-0.05, 0.05)
-	with tf.variable_scope("model", reuse=None, initializer=initializer):
-		# Build model here
-		# Pass necessary arguments
-		model = Model(config)
+	# Create model
+	model = Model(config)
 
 	with tf.Session(config=cfg_proto, graph=model.graph) as sess:
-		steps_done = restore_model(sess, model, save_dir)
+		# Restore model/Initialize weights
+		initializer = tf.random_uniform_initializer(-0.05, 0.05)
+		with tf.variable_scope("model", reuse=None, initializer=initializer):
+			steps_done = restore_model(sess, model, save_dir)
+		
 		logger.info("Loaded %d completed steps", steps_done)
         # Create summary writer
 		_ = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
