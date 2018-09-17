@@ -11,9 +11,9 @@ class HybridEmbeddings(object):
         self.graph = tf.Graph()
         with self.graph.as_default():
             # Placeholders for input tensors/matrices
-            self._idx = tf.placeholder(tf.int32, [None], name="input_indices")
-            self._lengths = tf.placeholder(tf.int32, [config.batch_size * config.timesteps], name="input_lengths")
-            self._output = tf.placeholder(tf.int32, [config.batch_size, config.timesteps], name="correct_output")
+            self._char_idx = tf.placeholder(tf.int32, [None], name="char_input_indices")
+            self._lengths = tf.placeholder(tf.int32, [config.batch_size * config.timesteps], name="word_lengths")
+            self._word_idx = tf.placeholder(tf.int32, [2, config.batch_size*config.timesteps], name="word_indices")
             self._states = tf.placeholder(tf.float32, [config.n_layers, 2, config.batch_size, config.num_units], name="lstm_states")
             self._lr = tf.placeholder_with_default(1.0, shape=[], name="learning_rate")
             
@@ -23,10 +23,15 @@ class HybridEmbeddings(object):
 
             # Other variables
             self.config = config
+            inp_words, targets = tf.unstack(self._word_idx)
 
             # Create embeddings
             with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE):
-                self.word_embedding = tf.get_variable("word", [config.word_vocab_size, config.word_dims])
+                # Embedding containing char-level n-gram information
+                self.input_word_embedding = tf.get_variable("M_c", [config.word_vocab_size, config.num_dims])
+                # Word-level output embedding
+                self.output_word_embedding = tf.get_variable("M_w", [config.word_vocab_size, config.word_dims])
+                # Char-embedding for input convolutional layer
                 self.char_embedding = tf.get_variable("char", [config.char_vocab_size, config.char_dims])
 
             ###############################################################################################
@@ -35,7 +40,7 @@ class HybridEmbeddings(object):
 
             # Extract character vectors from embedding
             with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE):
-                char_vecs = tf.gather(self.char_embedding, self._idx)
+                char_vecs = tf.gather(self.char_embedding, self._char_idx)
                 char_vecs = tf.split(char_vecs, self._lengths)
                 char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
                                 for cv, l in zip(char_vecs, tf.unstack(self._lengths, axis=0))]
@@ -59,6 +64,11 @@ class HybridEmbeddings(object):
                     feat_vecs.append(squeezed_tensor)
                 # concatenate the features obtained
                 feature_vec = tf.concat(feat_vecs, axis=1)
+
+                # assign feature vectors to input word embedding
+                for k,v in enumerate(tf.unstack(feature_vec)):
+                    self.input_word_embedding[inp_words[k]] = v
+                
                 self._input = tf.reshape(feature_vec, [config.batch_size, config.timesteps, config.num_dims])
 
             ###############################################################################################
@@ -103,14 +113,13 @@ class HybridEmbeddings(object):
                         self.final_states.append(tf.stack([fstate.c, fstate.h], axis=0))
 
                 self.final_states = tf.stack(self.final_states, axis=0, name="final_states")
-                # reshape 'input', 'target' to [batch_size*timesteps, num_units]
+                # reshape 'input' to [batch_size*timesteps, num_units]
                 inputs = tf.reshape(inputs, [-1, config.num_units])
-                targets = tf.reshape(self._output, [-1]) 
 
             # Projection and softmax layer
             output = tf.layers.dense(inputs, config.word_dims, name="projection")
             with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE):
-                logits = tf.matmul(output, self.word_embedding, transpose_b=True)
+                logits = tf.matmul(output, self.output_word_embedding, transpose_b=True)
                 self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
                 self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name="loss")
                 self.loss = tf.reduce_mean(self.loss)
@@ -132,37 +141,95 @@ class HybridEmbeddings(object):
             ###############################################################################################
             # Fine tuning operations
             ###############################################################################################
-            # TODO
+            
+            self.fine_tune_op = dict()
+            with tf.variable_scope("fine_tune", reuse=tf.AUTO_REUSE):
+                # Normalized word embeddings
+                ft_embeddings = self.input_word_embedding / tf.norm(self.input_word_embedding, axis=1, keep_dims=True)
+                
+                # Accumulator for AP loss
+                self.fine_tune_op['loss'] = tf.Variable(0.0, dtype=tf.float32, name='AP_loss')
+
+                # Placeholder for initial output embedding matrix (i.e. before fine-tuning)
+                self.fine_tune_op['init_embed'] = tf.placeholder(tf.float32, [config.word_vocab_size, config.word_dims])
+
+                # Iterate over the entire vocabulary
+                #
+                # TODO: Iterate over only those words whose frequency is above a threshold 
+                #
+                for ft_idx in range(config.word_vocab_size):
+                    # Find positive and negative word indices for given cue word
+                    # from the char-level input word embeddings
+                    ft_cosine_dist = tf.reduce_sum(ft_embeddings[ft_idx] * ft_embeddings, axis=1)
+                    ft_pos_idx, _ = tf.nn.top_k(ft_cosine_dist, config.fine_tune_pos_words)
+                    ft_neg_idx = tf.random_uniform(
+                        shape=(config.fine_tune_neg_words,), 
+                        minval=0, 
+                        maxval=config.word_vocab_size,
+                        dtype=tf.int32,
+                        seed=0)
+                    
+                    # Compute dot products of cue word with positive and negative words
+                    # Use output word embedding for obtaining word vectors
+                    pos_vals = tf.gather(self.output_word_embedding, ft_pos_idx) * self.output_word_embedding[ft_idx]
+                    neg_vals = tf.gather(self.output_word_embedding, ft_neg_idx) * self.output_word_embedding[ft_idx]
+
+                    # Compute the Attract (A-) loss for every pair of pos-neg words
+                    for i in range(config.fine_tune_pos_words):
+                        for j in range(config.fine_tune_neg_words):
+                            self.fine_tune_op['loss'] += tf.nn.relu(
+                                config.fine_tune_delta - tf.reduce_sum(pos_vals[i]) + tf.reduce_sum(neg_vals[j]))
+
+                    # Compute the Preserve (-P) loss
+                    self.fine_tune_op['loss'] += config.fine_tune_reg * tf.norm(
+                        self.output_word_embedding[ft_idx] - self.fine_tune_op['init_embed'][ft_idx])
+
+                # Optimizer for fine-tuning
+                ft_optim = tf.train.AdagradOptimizer(config.fine_tune_lr)
+                grads_vars = ft_optim.compute_gradients(
+                    loss=self.fine_tune_op['loss'],
+                    var_list=[self.output_word_embedding]
+                )
+                clipped_grads, _ = tf.clip_by_global_norm(
+                    t_list=[x[0] for x in grads_vars],
+                    clip_norm=config.fine_tune_grad_clip
+                )
+                self.fine_tune_op['tune'] = ft_optim.apply_gradients(
+                    [(clipped_grads[i], grads_vars[i]) for i in range(len(grads_vars))]
+                )
+
 
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
-        # Generate indices and lengths for obtaining word vectors
+        
+        # Storing the indices of input and output words
+        word_idx = np.zeros([2, x.shape[0], x.shape[1]])
         lengths = []; idx = []
-        for b in x:
-            for w in b:
-                lengths += [len(w[2])]; idx += w[2]
 
-        # Generate targets
-        if y is not None:
-            res = np.zeros(y.shape)
-            for i in range(y.shape[0]):
-                for j in range(y.shape[1]):
-                    res[i,j] = y[i,j][0]
+        # Generate character indices, word lengths for obtaining word vectors
+        # Also fill the input and output word indices in word_idx
+        for i in range(x.shape[0]):
+            for j in range(x.shape[1]):
+                lengths += [len(x[i,j][2])]
+                idx += x[i,j][2]
+                word_idx[0, i, j] = x[i,j][0]
+                if y is not None:
+                    word_idx[1, i, j] = y[i,j][0]
         
         # Execute ops depending on the mode
         if mode == 'train':
             return sess.run([self.loss, self.final_states, self.train_op], feed_dict = {
-                self._idx: idx,
+                self._char_idx: idx,
                 self._lengths: lengths,
-                self._output: res,
+                self._word_idx: np.reshape(word_idx, [2,-1]),
                 self._lr: lr,
                 self._states: self.initial_states if states is None else states,
             })
         elif mode == 'val':
             return sess.run(self.eval_metric, feed_dict = {
-                self._idx: idx,
+                self._char_idx: idx,
                 self._lengths: lengths,
-                self._output: res,
+                self._word_idx: np.reshape(word_idx, [2,-1]),
                 self._states: self.initial_states if states is None else states,
             })
         elif mode == 'test':
@@ -170,5 +237,12 @@ class HybridEmbeddings(object):
 
     def fine_tune(self, sess):
         """ Perform Attract-Preserve fine-tuning on embedding """
-        # TODO
-        pass
+        # Store the original output embedding matrix
+        org_output_embedding = sess.run([self.output_word_embedding])
+        # Perform fine-tuning for fixed number of iterations
+        for i in range(self.config.fine_tune_num_iters):
+            loss, _ = sess.run(
+                [self.fine_tune_op['loss'], self.fine_tune_op['tune']], 
+                feed_dict={self.fine_tune_op['init_embed']: org_output_embedding}
+            )
+            print("Fine-tuning: iteration %d, AP loss %f" % (i+1, loss))
