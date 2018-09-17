@@ -64,10 +64,16 @@ class HybridEmbeddings(object):
                     feat_vecs.append(squeezed_tensor)
                 # concatenate the features obtained
                 feature_vec = tf.concat(feat_vecs, axis=1)
+                # hack for unstack op to work
+                feature_vec = tf.reshape(feature_vec, [config.batch_size*config.timesteps, config.num_dims])
 
                 # assign feature vectors to input word embedding
+                assign_ops = []
                 for k,v in enumerate(tf.unstack(feature_vec)):
-                    self.input_word_embedding[inp_words[k]] = v
+                    assign_ops.append(tf.assign(self.input_word_embedding[inp_words[k]], v))
+                
+                # execute this op for assigning all feature vectors in one go
+                self.assign_op = tf.group(*assign_ops)
                 
                 self._input = tf.reshape(feature_vec, [config.batch_size, config.timesteps, config.num_dims])
 
@@ -146,46 +152,45 @@ class HybridEmbeddings(object):
             with tf.variable_scope("fine_tune", reuse=tf.AUTO_REUSE):
                 # Normalized word embeddings
                 ft_embeddings = self.input_word_embedding / tf.norm(self.input_word_embedding, axis=1, keep_dims=True)
-                
-                # Accumulator for AP loss
-                self.fine_tune_op['loss'] = tf.Variable(0.0, dtype=tf.float32, name='AP_loss')
 
                 # Placeholder for initial output embedding matrix (i.e. before fine-tuning)
-                self.fine_tune_op['init_embed'] = tf.placeholder(tf.float32, [config.word_vocab_size, config.word_dims])
-
-                # Iterate over the entire vocabulary
-                #
-                # TODO: Iterate over only those words whose frequency is above a threshold 
-                #
-                for ft_idx in range(config.word_vocab_size):
-                    # Find positive and negative word indices for given cue word
-                    # from the char-level input word embeddings
-                    ft_cosine_dist = tf.reduce_sum(ft_embeddings[ft_idx] * ft_embeddings, axis=1)
-                    ft_pos_idx, _ = tf.nn.top_k(ft_cosine_dist, config.fine_tune_pos_words)
-                    ft_neg_idx = tf.random_uniform(
-                        shape=(config.fine_tune_neg_words,), 
-                        minval=0, 
-                        maxval=config.word_vocab_size,
-                        dtype=tf.int32,
-                        seed=0)
-                    
-                    # Compute dot products of cue word with positive and negative words
-                    # Use output word embedding for obtaining word vectors
-                    pos_vals = tf.gather(self.output_word_embedding, ft_pos_idx) * self.output_word_embedding[ft_idx]
-                    neg_vals = tf.gather(self.output_word_embedding, ft_neg_idx) * self.output_word_embedding[ft_idx]
-
-                    # Compute the Attract (A-) loss for every pair of pos-neg words
-                    for i in range(config.fine_tune_pos_words):
-                        for j in range(config.fine_tune_neg_words):
-                            self.fine_tune_op['loss'] += tf.nn.relu(
-                                config.fine_tune_delta - tf.reduce_sum(pos_vals[i]) + tf.reduce_sum(neg_vals[j]))
-
-                    # Compute the Preserve (-P) loss
-                    self.fine_tune_op['loss'] += config.fine_tune_reg * tf.norm(
-                        self.output_word_embedding[ft_idx] - self.fine_tune_op['init_embed'][ft_idx])
+                self.fine_tune_op['init_embed'] = tf.placeholder(
+                    tf.float32, [config.word_vocab_size, config.word_dims], name='initial_embedding')
+                # Placeholder for index of current word
+                self.fine_tune_op['index'] = ft_idx = tf.placeholder(tf.int32, [], name='fine_tune_index')
 
                 # Optimizer for fine-tuning
                 ft_optim = tf.train.AdagradOptimizer(config.fine_tune_lr)
+
+                # Accumulator for AP loss
+                self.fine_tune_op['loss'] = tf.Variable(0.0, dtype=tf.float32, name='AP_loss')
+
+                # Find positive and negative word indices for given cue word
+                # from the char-level input word embeddings
+                ft_cosine_dist = tf.reduce_sum(ft_embeddings[ft_idx] * ft_embeddings, axis=1)
+                _, ft_pos_idx = tf.nn.top_k(ft_cosine_dist, config.fine_tune_pos_words)
+                ft_neg_idx = tf.random_uniform(
+                    shape=(config.fine_tune_neg_words,), 
+                    minval=0, 
+                    maxval=config.word_vocab_size,
+                    dtype=tf.int32,
+                    seed=0)
+                
+                # Compute dot products of cue word with positive and negative words
+                # Use output word embedding for obtaining word vectors
+                pos_vals = tf.gather(self.output_word_embedding, ft_pos_idx) * self.output_word_embedding[ft_idx]
+                neg_vals = tf.gather(self.output_word_embedding, ft_neg_idx) * self.output_word_embedding[ft_idx]
+
+                # Compute the Attract (A-) loss for every pair of pos-neg words
+                for i in range(config.fine_tune_pos_words):
+                    for j in range(config.fine_tune_neg_words):
+                        self.fine_tune_op['loss'] += tf.nn.relu(
+                            config.fine_tune_delta - tf.reduce_sum(pos_vals[i]) + tf.reduce_sum(neg_vals[j]))
+
+                # Compute the Preserve (-P) loss
+                self.fine_tune_op['loss'] += float(config.fine_tune_reg) * tf.norm(
+                    self.output_word_embedding[ft_idx] - self.fine_tune_op['init_embed'][ft_idx])
+
                 grads_vars = ft_optim.compute_gradients(
                     loss=self.fine_tune_op['loss'],
                     var_list=[self.output_word_embedding]
@@ -194,8 +199,9 @@ class HybridEmbeddings(object):
                     t_list=[x[0] for x in grads_vars],
                     clip_norm=config.fine_tune_grad_clip
                 )
+                # Training op for fine-tuning
                 self.fine_tune_op['tune'] = ft_optim.apply_gradients(
-                    [(clipped_grads[i], grads_vars[i]) for i in range(len(grads_vars))]
+                    [(clipped_grads[i], grads_vars[i][1]) for i in range(len(grads_vars))]
                 )
 
 
@@ -218,13 +224,14 @@ class HybridEmbeddings(object):
         
         # Execute ops depending on the mode
         if mode == 'train':
-            return sess.run([self.loss, self.final_states, self.train_op], feed_dict = {
+            res = sess.run([self.loss, self.final_states, self.train_op, self.assign_op], feed_dict = {
                 self._char_idx: idx,
                 self._lengths: lengths,
                 self._word_idx: np.reshape(word_idx, [2,-1]),
                 self._lr: lr,
                 self._states: self.initial_states if states is None else states,
             })
+            return res[:-1] # ignore the output of assign_op
         elif mode == 'val':
             return sess.run(self.eval_metric, feed_dict = {
                 self._char_idx: idx,
@@ -241,8 +248,17 @@ class HybridEmbeddings(object):
         org_output_embedding = sess.run([self.output_word_embedding])
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
-            loss, _ = sess.run(
-                [self.fine_tune_op['loss'], self.fine_tune_op['tune']], 
-                feed_dict={self.fine_tune_op['init_embed']: org_output_embedding}
-            )
-            print("Fine-tuning: iteration %d, AP loss %f" % (i+1, loss))
+            total_loss = 0.0
+            #
+            # TODO: iterate only over words with frequency > threshold
+            #
+            for idx in range(self.config.word_vocab_size):
+                loss, _ = sess.run(
+                    [self.fine_tune_op['loss'], self.fine_tune_op['tune']], 
+                    feed_dict={
+                        self.fine_tune_op['init_embed']: org_output_embedding,
+                        self.fine_tune_op['index']: idx
+                        }
+                )
+                total_loss += loss
+            print("Fine-tuning: iteration %d, AP loss %f" % (i+1, total_loss))
