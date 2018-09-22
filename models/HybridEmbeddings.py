@@ -26,7 +26,7 @@ class HybridEmbeddings(object):
             inp_words, targets = tf.unstack(self._word_idx)
 
             # Create embeddings
-            with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("embeddings", reuse=True):
                 # Embedding containing char-level n-gram information
                 self.input_word_embedding = tf.get_variable("M_c", [config.word_vocab_size, config.num_dims])
                 # Word-level output embedding
@@ -39,7 +39,7 @@ class HybridEmbeddings(object):
             ###############################################################################################
 
             # Extract character vectors from embedding
-            with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("extract_char_vectors", reuse=True):
                 char_vecs = tf.gather(self.char_embedding, self._char_idx)
                 char_vecs = tf.split(char_vecs, self._lengths)
                 char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
@@ -48,7 +48,7 @@ class HybridEmbeddings(object):
                 char_vecs = tf.expand_dims(char_vecs, axis=3)
 
             # Apply convolution
-            with tf.variable_scope("convolution", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("convolution", reuse=True):
                 feat_vecs = []
                 for k, n_ft in zip(config.kernel_sizes, config.kernel_features):
                     fltr = tf.get_variable("filter_%d" % k, [config.char_dims, k, 1, n_ft])
@@ -82,7 +82,7 @@ class HybridEmbeddings(object):
             ###############################################################################################
 
             # Two-layer highway network
-            with tf.variable_scope("highway", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("highway", reuse=True):
                 # first layer
                 x1 = tf.layers.dense(self._input, config.num_dims, activation=tf.nn.relu)
                 t1 = tf.layers.dense(self._input, config.num_dims, activation=tf.nn.sigmoid)
@@ -93,13 +93,13 @@ class HybridEmbeddings(object):
                 mod_input = x2*t2 + x1*(1-t2)
 
             # LSTM network
-            with tf.variable_scope("lstm", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("lstm", reuse=True):
                 self.lstm_cells = [tf.contrib.rnn.LSTMCell(
                                             num_units=config.num_units,
                                             cell_clip=config.lstm_clip,
                                             initializer=tf.random_uniform_initializer(-0.05, 0.05, seed=0),
                                             activation=tf.nn.relu,
-                                            reuse=tf.AUTO_REUSE
+                                            reuse=True
                                             ) for _ in range(config.n_layers)]
 
                 self.initial_states = []
@@ -114,7 +114,7 @@ class HybridEmbeddings(object):
                 states = [tf.contrib.rnn.LSTMStateTuple(st[0], st[1]) for st in states]
                 self.final_states = []
                 for i in range(config.n_layers):
-                    with tf.variable_scope("layer_%d" % i, reuse=tf.AUTO_REUSE):
+                    with tf.variable_scope("layer_%d" % i, reuse=True):
                         inputs, fstate = tf.nn.dynamic_rnn(self.lstm_cells[i], inputs, initial_state=states[i])
                         self.final_states.append(tf.stack([fstate.c, fstate.h], axis=0))
 
@@ -124,14 +124,14 @@ class HybridEmbeddings(object):
 
             # Projection and softmax layer
             output = tf.layers.dense(inputs, config.word_dims, name="projection")
-            with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("softmax", reuse=True):
                 logits = tf.matmul(output, self.output_word_embedding, transpose_b=True)
                 self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
                 self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name="loss")
                 self.loss = tf.reduce_mean(self.loss)
 
             # Optimizer
-            with tf.variable_scope("optimizer", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("optimizer", reuse=True):
                 # Standard tricks to train LSTMs
                 tvars = tf.trainable_variables()
                 grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, tvars), config.grad_clip)
@@ -149,7 +149,7 @@ class HybridEmbeddings(object):
             ###############################################################################################
             
             self.fine_tune_op = dict()
-            with tf.variable_scope("fine_tune", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("fine_tune", reuse=True):
                 # Normalized word embeddings
                 ft_embeddings = self.input_word_embedding / tf.norm(self.input_word_embedding, axis=1, keep_dims=True)
 
