@@ -49,12 +49,12 @@ def restore_model(sess, model, save_dir):
 		model.saver.restore(sess, ckpt.model_checkpoint_path)
 		steps_done = int(ckpt.model_checkpoint_path.split('-')[-1])
 		# Since local variables are not saved
-		sess.run([tf.local_variables_initializer()])
+		sess.run([model.local_initializer])
 	else:
 		steps_done = 0
 		sess.run([
-			tf.global_variables_initializer(),
-			tf.local_variables_initializer()
+			model.global_initializer,
+			model.local_initializer
 		])
 	return steps_done 
 
@@ -91,6 +91,8 @@ def train(data_dir, save_dir, best_dir, config):
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         # Start epoch-based training
 		lr = config.initial_learning_rate
+		# Merge all summaries
+		merged = tf.summary.merge_all()
 		# Finalize graph to prevent memory leakage
 		sess.graph.finalize()
 		last_val_ppl = 1000
@@ -107,7 +109,6 @@ def train(data_dir, save_dir, best_dir, config):
 				lr *= config.lr_decay
 			last_val_ppl = val_ppl
 			# write summaries to file
-			merged = tf.summary.merge_all()
 			sess.run(merged)
 
 def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):

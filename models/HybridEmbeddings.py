@@ -204,6 +204,8 @@ class HybridEmbeddings(object):
                     [(clipped_grads[i], grads_vars[i][1]) for i in range(len(grads_vars))]
                 )
 
+            self.global_initializer = tf.global_variables_initializer()
+            self.local_initializer = tf.local_variables_initializer()
 
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
