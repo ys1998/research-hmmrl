@@ -250,6 +250,7 @@ class HybridEmbeddings(object):
         org_output_embedding = np.squeeze(sess.run([self.output_word_embedding]))
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
+            print("Fine-tuning: iteration %d," % i+1, end='')
             total_loss = 0.0
             #
             # TODO: iterate only over words with frequency > threshold
@@ -263,4 +264,4 @@ class HybridEmbeddings(object):
                         }
                 )
                 total_loss += loss
-            print("Fine-tuning: iteration %d, AP loss %f" % (i+1, total_loss))
+            print(" AP loss %f" % (i+1, total_loss))
