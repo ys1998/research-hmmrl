@@ -163,7 +163,7 @@ class HybridEmbeddings(object):
                 ft_optim = tf.train.AdagradOptimizer(config.fine_tune_lr)
 
                 # Accumulator for AP loss
-                self.fine_tune_op['loss'] = tf.Variable(0.0, dtype=tf.float32, name='AP_loss')
+                self.fine_tune_op['loss'] = 0.0
 
                 # Find positive and negative word indices for given cue word
                 # from the char-level input word embeddings
@@ -245,7 +245,7 @@ class HybridEmbeddings(object):
     def fine_tune(self, sess):
         """ Perform Attract-Preserve fine-tuning on embedding """
         # Store the original output embedding matrix
-        org_output_embedding = sess.run([self.output_word_embedding])
+        org_output_embedding = np.squeeze(sess.run([self.output_word_embedding]))
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
             total_loss = 0.0

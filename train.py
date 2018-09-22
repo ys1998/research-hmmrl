@@ -136,7 +136,8 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			loss, states, _ = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
-			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
+			if b%10 == 0:
+				logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
 
 		elif mode == 'val':
 			metric = model.forward(sess, x, y, states, mode=mode)
