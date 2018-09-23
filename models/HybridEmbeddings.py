@@ -291,7 +291,7 @@ class HybridEmbeddings(object):
                 [self.fine_tune_op['loss'], self.fine_tune_op['tune'], self.ap_loss_summary], 
                 feed_dict={self.fine_tune_op['init_embed']: org_output_embedding}
             )
-            self.summary_writer.add_summary(self.ap_loss_summary, self.global_step.eval(sess) + i)
+            self.summary_writer.add_summary(summ, self.global_step.eval(sess) + i)
             print("Fine-tuning iteration: %d/%d, average AP loss: %.4f, time: %.2f" % 
                     (i+1, self.config.fine_tune_num_iters, total_loss, time.time() - st))
             sys.stdout.flush()
