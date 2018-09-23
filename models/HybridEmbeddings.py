@@ -239,6 +239,7 @@ class HybridEmbeddings(object):
             self.saver = tf.train.Saver(max_to_keep=3, var_list=tf.global_variables())
 
             self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
+            self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
 
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
@@ -267,6 +268,7 @@ class HybridEmbeddings(object):
                     self._lr: lr,
                     self._states: self.initial_states if states is None else states,
                 })
+            self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
             return res[:-3] # ignore the output of assign_op
         elif mode == 'val':
             return sess.run(self.eval_metric, feed_dict = {
@@ -285,10 +287,11 @@ class HybridEmbeddings(object):
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
             st = time.time()
-            total_loss, _, _ = sess.run(
+            total_loss, _, summ = sess.run(
                 [self.fine_tune_op['loss'], self.fine_tune_op['tune'], self.ap_loss_summary], 
                 feed_dict={self.fine_tune_op['init_embed']: org_output_embedding}
             )
+            self.summary_writer.add_summary(self.ap_loss_summary, self.global_step.eval(sess) + i)
             print("Fine-tuning iteration: %d/%d, average AP loss: %.4f, time: %.2f" % 
                     (i+1, self.config.fine_tune_num_iters, total_loss, time.time() - st))
             sys.stdout.flush()

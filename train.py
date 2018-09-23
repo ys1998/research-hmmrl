@@ -97,9 +97,6 @@ def train(data_dir, save_dir, best_dir, config):
 
 		# Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
-        
-		# Create summary writer
-		summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
 
 		# Start epoch-based training
 		lr = config.initial_learning_rate
@@ -120,8 +117,6 @@ def train(data_dir, save_dir, best_dir, config):
 			if val_ppl >= last_val_ppl:
 				lr *= config.lr_decay
 			last_val_ppl = val_ppl
-			# write graph to file
-			sess.run([summary_writer])
 
 def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):
 	"""Run one epoch of training."""
