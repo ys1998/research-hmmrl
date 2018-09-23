@@ -117,19 +117,25 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
                 vocab = f.read().split() 
             vocabs['words'] = {w:i for i,w in enumerate(vocab)}
         else:
-            # construct new vocab
-            vocab = {}; cntr = 0
+            # construct new vocab and freq
+            vocab = {}; cntr = 0; freq = {}
             for w in tr+va:
                 if w not in vocab:
                     vocab[w] = cntr
+                    freq[w] = 1
                     cntr = cntr+1
+                else:
+                    freq[w] = freq[w] + 1
             # add <unk> token
             vocab['<unk>'] = cntr
+            freq['<unk>'] = 1
             vocabs['words'] = vocab
             # save vocabulary
             if save_dir is not None:
                 with open(os.path.join(save_dir, 'word_vocab.txt'), 'w', encoding='utf-8') as f:
                     f.write('\n'.join(sorted(vocab.keys(), key=lambda x: vocab[x])))
+                with open(os.path.join(save_dir, 'word_freq.txt'), 'w', encoding='utf-8') as f:
+                    f.write('\n'.join([str(freq[x]) for x in sorted(vocab.keys(), key=lambda x: vocab[x])]))
         # build char vocab
         tr_c = list(train_data.replace('\n', ' '))
         va_c = list(val_data.replace('\n', ' '))

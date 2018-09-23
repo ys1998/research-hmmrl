@@ -38,3 +38,4 @@ fine_tune_reg: 1e-9
 fine_tune_grad_clip: 2
 fine_tune_lr: 0.05
 fine_tune_num_iters: 20
+fine_tune_cue_threshold: 5

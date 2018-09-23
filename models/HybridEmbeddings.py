@@ -151,6 +151,11 @@ class HybridEmbeddings(object):
             ###############################################################################################
             
             self.fine_tune_op = dict()
+            
+            # find indices of cue words
+            self.valid_cue_words = [i for i,j in enumerate(config.freq) 
+                                        if int(j) > config.fine_tune_cue_threshold]
+            
             with tf.variable_scope("fine_tune", reuse=False, initializer=tf.random_uniform_initializer(-0.05, 0.05)):
                 # Normalized word embeddings
                 ft_embeddings = self.input_word_embedding / tf.norm(self.input_word_embedding, axis=1, keep_dims=True)
@@ -261,7 +266,7 @@ class HybridEmbeddings(object):
             #
             # TODO: iterate only over words with frequency > threshold
             #
-            for idx in range(self.config.word_vocab_size):
+            for j,idx in enumerate(self.valid_cue_words):
                 loss, _ = sess.run(
                     [self.fine_tune_op['loss'], self.fine_tune_op['tune']], 
                     feed_dict={
@@ -270,8 +275,8 @@ class HybridEmbeddings(object):
                         }
                 )
                 total_loss += loss
-                if idx%500 == 0:
-                    print("Cue-word index: %d/%d" % (idx+1, self.config.word_vocab_size))
+                if j%100 == 0:
+                    print("Cue-word index: %d/%d" % (j+1, len(self.valid_cue_words)))
                     sys.stdout.flush()
             print("Total AP loss: %f" % total_loss)
             sys.stdout.flush()

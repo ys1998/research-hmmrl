@@ -75,6 +75,14 @@ def train(data_dir, save_dir, best_dir, config):
 	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
 	cfg_proto.gpu_options.allow_growth = True
 
+	##########################################################################
+	# Load word frequency information
+	##########################################################################
+	with open(os.path.join(data_dir, 'word_freq.txt'), encoding='utf-8') as f:
+		freq = f.read().split()
+		config['freq'] = freq
+	##########################################################################
+
 	# Create model
 	model = Model(config)
 
