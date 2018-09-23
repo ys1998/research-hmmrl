@@ -93,17 +93,25 @@ def train(data_dir, save_dir, best_dir, config):
 			steps_done = restore_model(sess, model, save_dir)
 		
 		logger.info("Loaded %d completed steps", steps_done)
+
         # Create summary writer
 		_ = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
-        # Find starting epoch
+		_ = tf.summary.scalar('cross_entropy_loss', model.loss)
+		_ = tf.summary.scalar('attract_preserve_loss', model.fine_tune_op['loss'])
+        
+		# Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
-        # Start epoch-based training
+        
+		# Start epoch-based training
 		lr = config.initial_learning_rate
+		
 		# Merge all summaries
 		merged = tf.summary.merge_all()
+		
 		# Finalize graph to prevent memory leakage
 		sess.graph.finalize()
 		last_val_ppl = 1000
+		
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
             # train
@@ -145,8 +153,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			loss, states, _ = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
-			if b%10 == 0:
-				logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
+			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
 
 		elif mode == 'val':
 			metric = model.forward(sess, x, y, states, mode=mode)
