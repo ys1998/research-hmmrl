@@ -141,9 +141,6 @@ class HybridEmbeddings(object):
             # Evaluation metric
             self.eval_metric = tf.reduce_mean(tf.exp(self.loss))    # trivial PPL
 
-            # Saver
-            self.saver = tf.train.Saver(max_to_keep=3)
-
             ###############################################################################################
             # Fine tuning operations
             ###############################################################################################
@@ -207,6 +204,9 @@ class HybridEmbeddings(object):
             self.global_initializer = tf.global_variables_initializer()
             self.local_initializer = tf.local_variables_initializer()
 
+            # Saver
+            self.saver = tf.train.Saver(max_to_keep=3, var_list=tf.global_variables())
+
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
         
@@ -250,7 +250,7 @@ class HybridEmbeddings(object):
         org_output_embedding = np.squeeze(sess.run([self.output_word_embedding]))
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
-            print("Fine-tuning: iteration %d," % i+1, end='')
+            print("Fine-tuning: iteration %d," % (i+1), end='')
             total_loss = 0.0
             #
             # TODO: iterate only over words with frequency > threshold
