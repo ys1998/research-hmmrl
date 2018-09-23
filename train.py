@@ -84,6 +84,7 @@ def train(data_dir, save_dir, best_dir, config):
 	##########################################################################
 
 	# Create model
+	config.save_dir = save_dir
 	model = Model(config)
 
 	with tf.Session(config=cfg_proto, graph=model.graph) as sess:
@@ -94,19 +95,14 @@ def train(data_dir, save_dir, best_dir, config):
 		
 		logger.info("Loaded %d completed steps", steps_done)
 
-        # Create summary writer
-		_ = tf.summary.FileWriter(save_dir + '/logs/', tf.get_default_graph())
-		_ = tf.summary.scalar('cross_entropy_loss', model.loss)
-		_ = tf.summary.scalar('attract_preserve_loss', model.fine_tune_op['loss'])
-        
 		# Find starting epoch
 		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
         
+		# Create summary writer
+		summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
+
 		# Start epoch-based training
 		lr = config.initial_learning_rate
-		
-		# Merge all summaries
-		merged = tf.summary.merge_all()
 		
 		# Finalize graph to prevent memory leakage
 		sess.graph.finalize()
@@ -124,8 +120,8 @@ def train(data_dir, save_dir, best_dir, config):
 			if val_ppl >= last_val_ppl:
 				lr *= config.lr_decay
 			last_val_ppl = val_ppl
-			# write summaries to file
-			sess.run(merged)
+			# write graph to file
+			sess.run([summary_writer])
 
 def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):
 	"""Run one epoch of training."""
@@ -150,7 +146,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
-			loss, states, _ = model.forward(sess, x, y, states, lr, mode)
+			loss, states = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)

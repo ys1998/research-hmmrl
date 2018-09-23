@@ -152,6 +152,8 @@ class HybridEmbeddings(object):
             # Evaluation metric
             self.eval_metric = tf.reduce_mean(tf.exp(self.loss))    # trivial PPL
 
+            self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', self.loss)
+
             ###############################################################################################
             # Fine tuning operations
             ###############################################################################################
@@ -236,6 +238,8 @@ class HybridEmbeddings(object):
             # Saver
             self.saver = tf.train.Saver(max_to_keep=3, var_list=tf.global_variables())
 
+            self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
+
     def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
         
@@ -255,14 +259,15 @@ class HybridEmbeddings(object):
         
         # Execute ops depending on the mode
         if mode == 'train':
-            res = sess.run([self.loss, self.final_states, self.train_op, self.assign_op], feed_dict = {
-                self._char_idx: idx,
-                self._lengths: lengths,
-                self._word_idx: np.reshape(word_idx, [2,-1]),
-                self._lr: lr,
-                self._states: self.initial_states if states is None else states,
-            })
-            return res[:-1] # ignore the output of assign_op
+            res = sess.run([self.loss, self.final_states, self.train_op, self.assign_op, self.ce_loss_summary], 
+                feed_dict = {
+                    self._char_idx: idx,
+                    self._lengths: lengths,
+                    self._word_idx: np.reshape(word_idx, [2,-1]),
+                    self._lr: lr,
+                    self._states: self.initial_states if states is None else states,
+                })
+            return res[:-3] # ignore the output of assign_op
         elif mode == 'val':
             return sess.run(self.eval_metric, feed_dict = {
                 self._char_idx: idx,
@@ -280,8 +285,8 @@ class HybridEmbeddings(object):
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
             st = time.time()
-            total_loss, _ = sess.run(
-                [self.fine_tune_op['loss'], self.fine_tune_op['tune']], 
+            total_loss, _, _ = sess.run(
+                [self.fine_tune_op['loss'], self.fine_tune_op['tune'], self.ap_loss_summary], 
                 feed_dict={self.fine_tune_op['init_embed']: org_output_embedding}
             )
             print("Fine-tuning iteration: %d/%d, average AP loss: %.4f, time: %.2f" % 
