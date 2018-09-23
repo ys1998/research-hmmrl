@@ -6,6 +6,10 @@ import tensorflow as tf
 import numpy as np
 import sys
 
+tf.reset_default_graph()
+np.random.seed(1)
+tf.set_random_seed(1)
+
 class HybridEmbeddings(object):
     def __init__(self, config):
         """ Method for initializing model and constructing graph """
