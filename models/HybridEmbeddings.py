@@ -4,6 +4,7 @@ charCNN-LSTM model that uses a mixture of word- and char-level embeddings.
 
 import tensorflow as tf
 import numpy as np
+import sys
 
 class HybridEmbeddings(object):
     def __init__(self, config):
@@ -250,7 +251,8 @@ class HybridEmbeddings(object):
         org_output_embedding = np.squeeze(sess.run([self.output_word_embedding]))
         # Perform fine-tuning for fixed number of iterations
         for i in range(self.config.fine_tune_num_iters):
-            print("Fine-tuning: iteration %d," % (i+1), end='')
+            print("Fine-tuning iteration: %d/%d" % (i+1, self.config.fine_tune_num_iters))
+            sys.stdout.flush()
             total_loss = 0.0
             #
             # TODO: iterate only over words with frequency > threshold
@@ -264,4 +266,8 @@ class HybridEmbeddings(object):
                         }
                 )
                 total_loss += loss
-            print(" AP loss %f" % (i+1, total_loss))
+                if idx%500 == 0:
+                    print("Cue-word index: %d/%d" % (idx+1, self.config.word_vocab_size))
+                    sys.stdout.flush()
+            print("Total AP loss: %f" % total_loss)
+            sys.stdout.flush()
