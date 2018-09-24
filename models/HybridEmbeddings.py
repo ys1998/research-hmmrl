@@ -25,6 +25,8 @@ class HybridEmbeddings(object):
             # TensorFlow variables
             self.global_step = tf.Variable(0, trainable=False, name="global_step")
             self.best_metric = tf.Variable(1000, trainable=False, name="best_metric")
+            self.new_best_metric = tf.placeholder(tf.float32, shape=[], name="new_best_metric")
+            self.update_best_metric = tf.assign(self.best_metric, self.new_best_metric)
 
             # Other variables
             self.config = config

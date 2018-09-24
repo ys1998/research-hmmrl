@@ -161,7 +161,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 		if final_metric < best_metric:
 			logger.info("Metric improved, saving best model")
 			# Store best metric in the model
-			sess.run(tf.assign(model.best_metric, final_metric))
+			sess.run([model.update_best_metric], feed_dict={model.new_best_metric: final_metric})
 			# Save the model
 			checkpoint_path = os.path.join(best_dir, "lm.ckpt")
 			model.saver.save(sess, checkpoint_path, global_step=model.global_step, write_meta_graph=False)
