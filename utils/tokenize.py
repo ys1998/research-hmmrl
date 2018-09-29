@@ -119,7 +119,7 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
         else:
             # construct new vocab and freq
             vocab = {}; cntr = 0; freq = {}
-            for w in tr+va:
+            for w in tr:    # consider tokens present only in training set
                 if w not in vocab:
                     vocab[w] = cntr
                     freq[w] = 1
@@ -138,7 +138,7 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
                     f.write('\n'.join([str(freq[x]) for x in sorted(vocab.keys(), key=lambda x: vocab[x])]))
         # build char vocab
         tr_c = list(train_data.replace('\n', ' '))
-        va_c = list(val_data.replace('\n', ' '))
+        # va_c = list(val_data.replace('\n', ' '))
         if save_dir is not None and os.path.exists(os.path.join(save_dir, 'char_vocab.txt')):
             # assume that correct vocab is present
             with open(os.path.join(save_dir, 'char_vocab.txt'), 'r', encoding='utf-8') as f:
@@ -147,7 +147,7 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
         else:
             # construct new vocab
             vocab = {}; cntr = 0
-            for c in tr_c+va_c:
+            for c in tr_c:  # consider tokens present only in training set
                 if c not in vocab:
                     vocab[c] = cntr
                     cntr = cntr+1

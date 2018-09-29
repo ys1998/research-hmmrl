@@ -1,0 +1,19 @@
+EMAIL AUTHORS
+prune word vocab 
+threshold for cue words
+prune char vocab (non hindi chars, blows vocab size)
+
+TODO
+send email to everyone
+sentence wise ppl (batch wise, print sentences and predicted)
+trigram clusters (overlapping) [later = lat + ate + ter]
+bigram clusters (overlapping)
+frequency dist for each independtly and then determine threshold (separately)
+
+MODIFICATIONS
+use tokens only from training data
+word vector generation from subword units: sum, conv filters
+sparse softmax vs softmax compare (per batch)
+
+NEXT MEETING Tuesday 4PM
+attention (replace max pool over time)
