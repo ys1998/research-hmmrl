@@ -4,6 +4,6 @@ __pycache__/
 *.cpython*
 save/
 save_best/
-word_vocab.txt
-char_vocab.txt
-word_freq.txt
+*/*/word_vocab.txt
+*/*/char_vocab.txt
+*/*/word_freq.txt
