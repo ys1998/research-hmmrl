@@ -51,50 +51,81 @@ class BatchLoader(object):
 		self.data_loader = data_loader
 		self.batch_size = batch_size
 		self.timesteps = timesteps
+		self.mode = mode
 
-		if mode == 'train':
-			self.data = data_loader.data['train']
-		elif mode == 'val':
-			self.data = data_loader.data['val']
-		elif mode == 'test':
-			self.data = data_loader.data['test']
-
-		self.num_batches = num_batches = int(len(self.data) / (batch_size * timesteps))
-		# When the data (tensor) is too small
-		if num_batches == 0:
-			print("Not enough data. Make seq_length and batch_size small.")
-			sys.exit()
-
-		xdata = self.data[:num_batches * batch_size * timesteps]
-		ydata = np.copy(xdata)
-
-		# Building output tokens - next token predictors
-		ydata[:-1] = xdata[1:]
-		ydata[-1] = xdata[0]
-
-		# Encode each token as a `dict` of indices in multiple embeddings
-		#
-		# Eg. 'hello' = {0: [67], 1: [8,5,12,12,15], 2: [83]}
-		# 0 - word space
-		# 1 - char space
-		# 2 - morpheme space
-		#
-		self.xdata = np.asarray(data_loader.encode_func(xdata, data_loader.vocabs))
-		self.ydata = np.asarray(data_loader.encode_func(ydata, data_loader.vocabs))
-
-		# Splitting data into batches.
-		self.x_batches = np.split(self.xdata.reshape(batch_size, -1), num_batches, 1)
-		self.y_batches = np.split(self.ydata.reshape(batch_size, -1), num_batches, 1)
-
-		self.pointer = 0
+		self.reset_pointers()		
 
 	def next_batch(self):
-		"""Output the next batch."""
-		x = self.x_batches[self.pointer]
-		y = self.y_batches[self.pointer]
+		"""
+		Output the next batch.
+		Returns:
+			x, y, lengths, reset, end
+		"""
+		
+		if self.update_sentences:
+			self.sentences = self.data[self.indices[self.batch_pointer, np.arange(self.batch_size, dtype=int)]]
+			for i in range(len(self.sentences)):
+				self.sentences[i] = ['<s>'] + self.sentences[i] + ['</s>']
+			self.update_sentences = False
+		
+		reset = self.reset_reqd
+		x = y = np.empty([self.batch_size, self.timesteps], dtype=object)
+		lengths = np.zeros(self.batch_size, dtype=int)
+		batch_over = [False]*self.batch_size
 
-		self.pointer += 1
-		return x, y
+		for i in range(self.batch_size):
+			if self.batch_pointer[i] == self.num_batches:
+				batch_over[i] = True
+				continue
+
+			l = len(self.sentences[i][self.word_pointer[i]:-1])
+			if l <= self.timesteps:
+				x[i] = self.sentences[i][self.word_pointer[i]:-1] + ['<pad>']*(self.timesteps - l)
+				y[i] = self.sentences[i][self.word_pointer[i]+1:] + ['<pad>']*(self.timesteps - l)
+				lengths[i] = l
+				self.reset_reqd[i] = 1.0
+				self.batch_pointer[i] += 1
+				self.update_sentences = True
+				self.word_pointer[i] = 0
+			else:
+				x[i] = self.sentences[i][self.word_pointer[i]:self.timesteps]
+				y[i] = self.sentences[i][self.word_pointer[i]+1:self.timesteps+1]
+				lengths[i] = self.timesteps
+				self.reset_reqd[i] = 0.0
+				self.word_pointer[i] += self.timesteps
+
+		x = self.data_loader.encode_func(x, self.data_loader.vocabs)
+		y = self.data_loader.encode_func(y, self.data_loader.vocabs)
+
+		return x, y, lengths, reset, all(batch_over)
 	
-	def reset_batch_pointer(self):
-		self.pointer = 0
+	def reset_pointers(self):
+		"""
+		Function to set up data members for new epoch.
+		"""
+		if self.mode == 'train':
+			self.data = self.data_loader.data['train']
+		elif self.mode == 'val':
+			self.data = self.data_loader.data['val']
+		elif self.mode == 'test':
+			self.data = self.data_loader.data['test']
+
+		self.data = np.asarray(self.data)
+		# shuffle training data
+		np.random.shuffle(self.data)
+		# calculate number of groups
+		self.num_batches = len(self.data) // self.batch_size
+		# neglect trailing sentences
+		self.data = self.data[:self.num_batches*self.batch_size]
+		# create groups of indices
+		self.indices = np.random.choice(len(self.data), [self.num_batches, self.batch_size], replace=False)
+		# create independent pointers for each member of a batch
+		self.batch_pointer = np.zeros(self.batch_size, dtype=int)
+		# create pointer for word of each batch-member
+		self.word_pointer = np.zeros(self.batch_size, dtype=int)
+		# boolean array indicating whether states need to be reset
+		self.reset_reqd = np.zeros(self.batch_size)
+		# boolean to indicate whether to update sentences
+		self.update_sentences = True
+
+

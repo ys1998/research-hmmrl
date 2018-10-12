@@ -96,7 +96,7 @@ def train(data_dir, save_dir, best_dir, config):
 		logger.info("Loaded %d completed steps", steps_done)
 
 		# Find starting epoch
-		start_epoch = model.global_step.eval() // train_batch_loader.num_batches
+		start_epoch = model.epoch_cntr.eval()
 
 		# Start epoch-based training
 		lr = config.initial_learning_rate
@@ -117,44 +117,51 @@ def train(data_dir, save_dir, best_dir, config):
 			if val_ppl >= last_val_ppl:
 				lr *= config.lr_decay
 			last_val_ppl = val_ppl
+			# increment epoch
+			sess.run([model.incr_epoch])
 
 def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=None, lr=None):
 	"""Run one epoch of training."""
-	# Reset batch pointer back to zero
-	batch_loader.reset_batch_pointer()
+	# Prepare loader for new epoch
+	batch_loader.reset_pointers()
 	# Start from an empty RNN state
-	states = sess.run(model.initial_states)
+	init_states = sess.run(model.initial_states)
+	states = init_states
 
-	if mode == 'train':
-		start_batch = model.global_step.eval() % batch_loader.num_batches
-		if start_batch != 0:
-			logger.info("Starting from batch %d / %d", start_batch, batch_loader.num_batches)
-			batch_loader.pointer += start_batch
-	elif mode == 'val':
+	if mode == 'val':
 		acc_metric = 0.0
-		start_batch = 0
 
-	for b in range(start_batch, batch_loader.num_batches):
-		x, y = batch_loader.next_batch()
-
+	end = False
+	b = 1
+	while not end:
+		x, y, lengths, reset, end = batch_loader.next_batch()
 		if mode == 'train':
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
-			loss, states = model.forward(sess, x, y, states, lr, mode)
+			
+			for i in range(len(reset)):
+				if reset[i] == 1.0:
+					states[:,:,i,:] = init_states[:,:,i,:]
+
+			loss, states = model.forward(sess, x, y, states, lengths, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
-			logger.info("Batch %d / %d, Loss - %.4f, Time - %.2f", b+1, batch_loader.num_batches, loss, end - start)
+			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, loss, end - start)
 
 		elif mode == 'val':
-			metric = model.forward(sess, x, y, states, mode=mode)
+			metric = model.forward(sess, x, y, states, lengths, mode=mode)
 			# accumulate evaluation metric here
 			acc_metric += np.log(metric)
 		
+		b += 1
+
+		
 	# After epoch is complete
+	batch_loader.reset_pointers()
 	if mode == 'val':
 		# find metric from accumulated metrics of mini batches
-		final_metric = np.exp(acc_metric/batch_loader.num_batches)
+		final_metric = np.exp(acc_metric/b)
 		best_metric = model.best_metric.eval()
 		logger.info("Evaluation metric = %.4f", final_metric)
 		logger.info("Best metric = %.4f", best_metric)

@@ -7,3 +7,4 @@ save_best/
 */*/word_vocab.txt
 */*/char_vocab.txt
 */*/word_freq.txt
+data/*/*.txt

@@ -1,0 +1,11 @@
+TODO
+- choose cue words and find closest words according to both char and word level embeddings
+- split sentences across batches and reset state after each sentence
+- debug each module separately
+
+IDEAS
+- orthogonality constraint on char and word level embeddings
+    - issue: different sized embeddings
+- attention layer for generating word vector of next word
+    - use sliding window of fixed length for context
+- char + ngrams instead of convolutional layer

@@ -21,12 +21,15 @@ class HybridEmbeddings(object):
             self._word_idx = tf.placeholder(tf.int32, [2, config.batch_size*config.timesteps], name="word_indices")
             self._states = tf.placeholder(tf.float32, [config.n_layers, 2, config.batch_size, config.num_units], name="lstm_states")
             self._lr = tf.placeholder_with_default(1.0, shape=[], name="learning_rate")
+            self._valid_tsteps = tf.placeholder(tf.int32, [config.batch_size], name="valid_timesteps")
             
             # TensorFlow variables
             self.global_step = tf.Variable(0, trainable=False, name="global_step")
             self.best_metric = tf.Variable(1000.0, trainable=False, name="best_metric")
             self.new_best_metric = tf.placeholder(tf.float32, shape=[], name="new_best_metric")
             self.update_best_metric = tf.assign(self.best_metric, self.new_best_metric)
+            self.epoch_cntr = tf.Variable(0, trainable=False, name="epoch_counter")
+            self.incr_epoch = tf.assign_add(self.epoch_cntr, 1)
 
             # Other variables
             self.config = config
@@ -142,6 +145,15 @@ class HybridEmbeddings(object):
                 self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
                 self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name="loss")
                 self.loss = tf.reduce_mean(self.loss)
+                # self.loss = 0.0
+                # logits = tf.reshape(logits, [config.batch_size, config.timesteps, -1])
+                # targets = tf.reshape(targets, [config.batch_size, config.timesteps])
+                # print(logits, targets)
+                # for i in range(config.batch_size):
+                #     self.loss += tf.nn.sparse_softmax_cross_entropy_with_logits(
+                #                     logits=logits[i, :self._valid_tsteps[i], :], 
+                #                     labels=targets[i, :self._valid_tsteps[i]]
+                #                 )
 
             # Optimizer
             with tf.variable_scope("optimizer", reuse=False, initializer=tf.random_uniform_initializer(-0.05, 0.05)):
@@ -243,7 +255,7 @@ class HybridEmbeddings(object):
             self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
             self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
 
-    def forward(self, sess, x, y=None, states=None, lr=1.0, mode='train'):
+    def forward(self, sess, x, y=None, states=None, valid_tsteps=None, lr=1.0, mode='train'):
         """ Perform one forward and backward pass (only when required) over the network """
         
         # Storing the indices of input and output words
@@ -269,6 +281,7 @@ class HybridEmbeddings(object):
                     self._word_idx: np.reshape(word_idx, [2,-1]),
                     self._lr: lr,
                     self._states: self.initial_states if states is None else states,
+                    self._valid_tsteps: valid_tsteps
                 })
             self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
             return res[:-3] # ignore the output of assign_op
@@ -278,6 +291,7 @@ class HybridEmbeddings(object):
                 self._lengths: lengths,
                 self._word_idx: np.reshape(word_idx, [2,-1]),
                 self._states: self.initial_states if states is None else states,
+                self._valid_tsteps: valid_tsteps
             })
         elif mode == 'test':
             pass

@@ -16,6 +16,8 @@ of integers represent constituent members from vocabular[y|ies]
 OoV words can be handled either here or in the tokenizer.
 """
 
+import numpy as np
+
 """ Default word encoder """
 def word_encoder(tokens, vocabs):
     return [{0: vocabs['words'][w], 1:None} for w in tokens]
@@ -26,9 +28,10 @@ def char_encoder(tokens, vocabs):
 
 """ Custom encoder for LMMRL """
 def lmmrl_encoder(tokens, vocabs):
-    encoded_lst = []
-    for w in tokens:
-        # encode words
+    encoded_arr = np.empty_like(tokens, dtype=object)
+    it = np.nditer(tokens, flags=['multi_index', 'refs_ok'])
+    while not it.finished:
+        w = str(it[0])
         encoding = {1:None}
         if w not in vocabs['words']:
             encoding[0] = vocabs['words']['<unk>']
@@ -41,5 +44,6 @@ def lmmrl_encoder(tokens, vocabs):
                 encoding[2].append(vocabs['chars']['<unk>'])
             else:
                 encoding[2].append(vocabs['chars'][c])
-        encoded_lst.append(encoding)
-    return encoded_lst
+        encoded_arr[it.multi_index] = encoding
+        it.iternext()
+    return encoded_arr
