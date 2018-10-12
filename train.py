@@ -133,7 +133,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 
 	end_epoch = False
 	b = 1
-	while not end:
+	while not end_epoch:
 		x, y, lengths, reset, end_epoch = batch_loader.next_batch()
 		if mode == 'train':
 			start = time.time()
