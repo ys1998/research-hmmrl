@@ -1,0 +1,1 @@
+- sliding window of size k; word vectors of prev k words; concatenate, matrix multiply, softmax on output to generate weights, applied to pooling

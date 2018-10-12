@@ -13,6 +13,18 @@ def main():
     with open(tr_path, 'r', encoding='utf-8') as f:
         sentences = f.read().split('\n')
 
+    sentence_lens = {}
+    for s in sentences:
+        if len(s) in sentence_lens:
+            sentence_lens[len(s)] += 1
+        else:
+            sentence_lens[len(s)] = 1
+
+    plt.figure()
+    plt.plot(sentence_lens.keys(), np.cumsum(list(sentence_lens.values()))/sum(list(sentence_lens.values())))
+    plt.title('Sentence lengths')
+    plt.show(block=False)
+
     for s in sentences:
         words = s.split(' ')
         for w in words:

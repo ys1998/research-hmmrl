@@ -107,8 +107,8 @@ def char_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None
 def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=None):
     if test_data is None:
         # process training and validation tokens
-        tr = train_data.split()
-        va = val_data.split()
+        tr = [x.split() for x in train_data.split('\n')]
+        va = [x.split() for x in val_data.split('\n')]
         # build/load vocabulary
         vocabs = {}
         if save_dir is not None and os.path.exists(os.path.join(save_dir, 'word_vocab.txt')):
@@ -119,16 +119,19 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
         else:
             # construct new vocab and freq
             vocab = {}; cntr = 0; freq = {}
-            for w in tr:    # consider tokens present only in training set
-                if w not in vocab:
-                    vocab[w] = cntr
-                    freq[w] = 1
-                    cntr = cntr+1
-                else:
-                    freq[w] = freq[w] + 1
-            # add <unk> token
-            vocab['<unk>'] = cntr
-            freq['<unk>'] = 1
+            for s in tr:    # consider tokens present only in training set
+                for w in s:
+                    if w not in vocab:
+                        vocab[w] = cntr
+                        freq[w] = 1
+                        cntr = cntr+1
+                    else:
+                        freq[w] = freq[w] + 1
+            vocab['<unk>'] = cntr # add <unk> token
+            vocab['<pad>'] = cntr+1 # add pad token
+            vocab['<s>'] = cntr+2
+            vocab['</s>'] = cntr+3 # add sentence termination tokens
+            freq['<unk>'] = freq['<pad>'] = freq['<s>'] = freq['</s>'] = 1
             vocabs['words'] = vocab
             # save vocabulary
             if save_dir is not None:
@@ -138,7 +141,6 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
                     f.write('\n'.join([str(freq[x]) for x in sorted(vocab.keys(), key=lambda x: vocab[x])]))
         # build char vocab
         tr_c = list(train_data.replace('\n', ' '))
-        # va_c = list(val_data.replace('\n', ' '))
         if save_dir is not None and os.path.exists(os.path.join(save_dir, 'char_vocab.txt')):
             # assume that correct vocab is present
             with open(os.path.join(save_dir, 'char_vocab.txt'), 'r', encoding='utf-8') as f:
@@ -159,6 +161,7 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
                 with open(os.path.join(save_dir, 'char_vocab.txt'), 'w', encoding='utf-8') as f:
                     f.write('\n'.join(sorted(vocab.keys(), key=lambda x: vocab[x])))
 
+        # data is in the form of a list of sentences
         return  {'train':tr, 'val':va, 'test':None}, vocabs
                 
     else:
@@ -176,4 +179,4 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
             # generate mapping
             vocabs['chars'] = {w:i for i,w in enumerate(vocab)}
 
-            return  {'train':None, 'val':None, 'test':test_data.split()}, vocabs
+            return  {'train':None, 'val':None, 'test':[x.split() for x in test_data.split('\n')]}, vocabs

@@ -2,7 +2,7 @@ batch_size: 20
 timesteps: 35
 num_dims: 1100
 n_layers: 2
-word_vocab_size: 50391 ##
+word_vocab_size: 50394 ##
 word_dims: 650
 char_vocab_size: 559 ##
 char_dims: 15
