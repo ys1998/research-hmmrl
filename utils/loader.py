@@ -63,7 +63,8 @@ class BatchLoader(object):
 		"""
 		
 		if self.update_sentences:
-			self.sentences = self.data[self.indices[self.batch_pointer, np.arange(self.batch_size, dtype=int)]]
+			idx = [max(x, self.num_batches-1) for x in self.batch_pointer]
+			self.sentences = self.data[self.indices[idx, np.arange(self.batch_size, dtype=int)]]
 			for i in range(len(self.sentences)):
 				self.sentences[i] = ['<s>'] + self.sentences[i] + ['</s>']
 			self.update_sentences = False
@@ -76,6 +77,8 @@ class BatchLoader(object):
 		for i in range(self.batch_size):
 			if self.batch_pointer[i] == self.num_batches:
 				batch_over[i] = True
+				x[i] = y[i] = ['<pad>']*self.timesteps
+				self.reset_reqd[i] = 1.0
 				continue
 
 			l = len(self.sentences[i][self.word_pointer[i]:-1])
