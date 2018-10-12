@@ -176,17 +176,19 @@ class HybridEmbeddings(object):
             
             # find indices of cue words
             self.valid_cue_words = [i for i,j in enumerate(config.freq) 
-                                        if int(j) > config.fine_tune_cue_threshold]
+                                        if int(j) > config.fine_tune_cue_threshold 
+                                        and i not in range(config.word_vocab_size-4, config.word_vocab_size)]
             
             with tf.variable_scope("fine_tune", reuse=False, initializer=tf.random_uniform_initializer(-0.05, 0.05)):
                 # Normalized word embeddings
                 ft_embeddings = self.input_word_embedding / tf.norm(self.input_word_embedding, axis=1, keep_dims=True)
-
+                
+                # ignore artificially added tokens
+                ft_embeddings = ft_embeddings[:-4]
+                
                 # Placeholder for initial output embedding matrix (i.e. before fine-tuning)
                 self.fine_tune_op['init_embed'] = tf.placeholder(
                     tf.float32, [config.word_vocab_size, config.word_dims], name='initial_embedding')
-                # Placeholder for index of current word
-                # self.fine_tune_op['index'] = ft_idx = tf.placeholder(tf.int32, [], name='fine_tune_index')
 
                 # Optimizer for fine-tuning
                 ft_optim = tf.train.AdagradOptimizer(float(config.fine_tune_lr))
@@ -201,7 +203,7 @@ class HybridEmbeddings(object):
                 ft_neg_idx = tf.random_uniform(
                     shape=(len(self.valid_cue_words), config.fine_tune_neg_words), 
                     minval=0, 
-                    maxval=config.word_vocab_size,
+                    maxval=config.word_vocab_size-4, #ignore artificially added tokens
                     dtype=tf.int32,
                     seed=0)
                 
