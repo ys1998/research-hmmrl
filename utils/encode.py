@@ -38,12 +38,13 @@ def lmmrl_encoder(tokens, vocabs):
         else:
             encoding[0] = vocabs['words'][w]
         # encode characters
-        encoding[2] = []
+        encoding[2] = [vocabs['chars']['<w>']]
         for c in w:
             if c not in vocabs['chars']:
                 encoding[2].append(vocabs['chars']['<unk>'])
             else:
                 encoding[2].append(vocabs['chars'][c])
+        encoding[2].append(vocabs['chars']['</w>'])
         encoded_arr[it.multi_index] = encoding
         it.iternext()
     return encoded_arr

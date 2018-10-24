@@ -155,6 +155,8 @@ def lmmrl_tokenizer(train_data=None, val_data=None, test_data=None, save_dir=Non
                     cntr = cntr+1
             # add <unk> token
             vocab['<unk>'] = cntr
+            vocab['<w>'] = cntr+1
+            vocab['</w>'] = cntr+2
             vocabs['chars'] = vocab
             # save vocabulary
             if save_dir is not None:
