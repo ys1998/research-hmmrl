@@ -8,7 +8,8 @@ import os, sys, time, yaml, logging
 from munch import munchify
 
 # Import model
-from models.HybridEmbeddings import HybridEmbeddings as Model
+# from models.HybridEmbeddings import HybridEmbeddings as Model
+from models.PoolingWindow import Model
 # Import other utilities
 from utils.arguments import train_parser as parser
 from utils.loader import DataLoader, BatchLoader
@@ -71,7 +72,7 @@ def train(data_dir, save_dir, best_dir, config):
 	train_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='train')
 	val_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='val')
 
-    # Run on GPU by default
+	# Run on GPU by default
 	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
 	cfg_proto.gpu_options.allow_growth = True
 
@@ -107,7 +108,7 @@ def train(data_dir, save_dir, best_dir, config):
 		
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
-            # train
+			# train
 			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir, lr=lr)
 			# validate
 			val_ppl = run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)

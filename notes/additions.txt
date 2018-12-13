@@ -1,0 +1,4 @@
+- gate for controlling contribution of context info in attention
+	- dependent on raw word vector (matrix)
+	- tells whether 'help' is required from global info
+- separate PoolingWindow for each ngram

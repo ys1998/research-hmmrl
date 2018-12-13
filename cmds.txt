@@ -1,0 +1,2 @@
+python3 train.py --data_dir data/hi/ --save_dir save/ --best_dir save_best/ --config_file config.yml --job_id pooling_window
+
