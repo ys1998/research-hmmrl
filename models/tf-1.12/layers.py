@@ -98,7 +98,7 @@ class PoolingWindow(object):
 		feats = gate_values*tf.expand_dims(global_feats, axis=1) + (1-gate_values)*local_feats
 
 		# final attention vector
-		attention = tf.nn.softmax(feats, dim=2)
+		attention = tf.nn.softmax(feats, axis=2)
 
 		# final word vector
 		return tf.reduce_sum(attention * x, axis=2)
@@ -150,9 +150,8 @@ class ConvPoolLSTMUnit(object):
 		with tf.control_dependencies([tf.scatter_update(self.word_embedding, tf.squeeze(word_idx), output)]):
 			fstates = []
 			for i, cell in enumerate(self.lstm_cells):
-				with tf.variable_scope("layer_"+str(i+1)):
-					output, fstate = cell(output, states[i])
-					fstates.append(fstate)
+				output, fstate = cell(output, states[i])
+				fstates.append(fstate)
 
 		return output, fstates
 

@@ -40,7 +40,7 @@ class Model(object):
 			targets = tf.reshape(targets, [config.batch_size, config.timesteps])
 
 			# Create embeddings
-			with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("embeddings", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				# Embedding containing char-level n-gram information
 				self.input_word_embedding = tf.get_variable("M_c", [config.word_vocab_size, config.num_dims])
 				# Word-level output embedding
@@ -53,7 +53,7 @@ class Model(object):
 			###############################################################################################
 
 			# Extract character vectors from embedding
-			with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("extract_char_vectors", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				char_vecs = tf.gather(self.char_embedding, self._char_idx)
 				char_vecs = tf.split(char_vecs, self._lengths)
 				char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
@@ -63,7 +63,7 @@ class Model(object):
 				char_vecs = tf.reshape(char_vecs, [config.batch_size, config.timesteps, config.char_dims, config.max_word_length])
 
 			# Apply convolution
-			with tf.variable_scope("convolution", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("convolution", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				self.conv_units = [tf.layers.Conv2D(
 					filters=n_fts, 
 					kernel_size=[config.char_dims, k],
@@ -85,27 +85,24 @@ class Model(object):
 			###############################################################################################
 
 			# Two-layer highway network
-			with tf.variable_scope("highway", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("highway", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				self.transformation_unit = TransformationUnit([config.batch_size, config.num_dims], config.keep_prob)
 
 			# LSTM network
 			with tf.variable_scope("lstm", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
-				self.lstm_cells = []
-				for i in range(config.n_layers):
-					with tf.variable_scope("layer_"+str(i+1)):
-						cell = tf.contrib.rnn.DropoutWrapper(
-								tf.contrib.rnn.LSTMCell(
-									num_units=config.num_units,
-									cell_clip=config.lstm_clip,
-									initializer=tf.initializers.random_uniform(-0.05, 0.05, seed=0),
-									activation=tf.nn.relu,
-									reuse=False
-									),
-								input_keep_prob = config.keep_prob,
-								output_keep_prob = config.keep_prob,
-								state_keep_prob = config.keep_prob)
-						self.lstm_cells.append(cell) 
-							
+				self.lstm_cells = [
+						tf.contrib.rnn.DropoutWrapper(
+							tf.contrib.rnn.LSTMCell(
+								num_units=config.num_units,
+								cell_clip=config.lstm_clip,
+								initializer=tf.initializers.random_uniform(-0.05, 0.05, seed=0),
+								activation=tf.nn.relu,
+								reuse=False
+								),
+							input_keep_prob = config.keep_prob,
+							output_keep_prob = config.keep_prob,
+							state_keep_prob = config.keep_prob) 
+						for _ in range(config.n_layers)]
 
 				self.initial_states = []
 				for i in range(config.n_layers):
@@ -144,11 +141,11 @@ class Model(object):
 
 			# Projection and softmax layer
 			output = tf.layers.dense(outputs, config.word_dims, name="projection")
-			with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("softmax", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				logits = tf.matmul(output, self.output_word_embedding, transpose_b=True)
 				logits = tf.reshape(logits, [config.batch_size, config.timesteps, -1])
 
-				self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
+				self.prediction = tf.nn.softmax(logits, axis=1, name="prediction")
 				self.prediction = tf.reshape(self.prediction, [config.batch_size, config.timesteps, -1])
 
 				temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
@@ -158,7 +155,7 @@ class Model(object):
 				self.loss = tf.reduce_mean(tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32))
 
 			# Optimizer
-			with tf.variable_scope("optimizer", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("optimizer", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				# Standard tricks to train LSTMs
 				tvars = tf.trainable_variables()
 				grads = tf.gradients(self.loss, tvars)
@@ -182,9 +179,9 @@ class Model(object):
 										if int(j) > config.fine_tune_cue_threshold 
 										and i not in range(config.word_vocab_size-4, config.word_vocab_size)]
 			
-			with tf.variable_scope("fine_tune", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
+			with tf.variable_scope("fine_tune", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				# Normalized word embeddings
-				ft_embeddings = self.input_word_embedding / (tf.norm(self.input_word_embedding, axis=1, keep_dims=True) + 1e-9)
+				ft_embeddings = self.input_word_embedding / (tf.norm(self.input_word_embedding, axis=1, keepdims=True) + 1e-9)
 				
 				# ignore artificially added tokens
 				ft_embeddings = ft_embeddings[:-4]
