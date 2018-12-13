@@ -73,7 +73,7 @@ def train(data_dir, save_dir, best_dir, config):
 	val_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='val')
 
 	# Run on GPU by default
-	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=2)
+	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
 	cfg_proto.gpu_options.allow_growth = True
 
 	##########################################################################
