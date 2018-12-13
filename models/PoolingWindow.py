@@ -152,7 +152,7 @@ class Model(object):
 				# temp_loss has shape [batch_size, timesteps]
 				# create mask to discard effect of padding
 				mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
-				self.loss = tf.reduce_sum(mask * temp_loss)/config.batch_size
+				self.loss = tf.reduce_mean(tf.reduce_sum(mask * temp_loss, axis=1)/self.valid_tsteps)
 
 			# Optimizer
 			with tf.variable_scope("optimizer", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -164,7 +164,7 @@ class Model(object):
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 			
 			# Evaluation metric
-			self.eval_metric = tf.reduce_mean(tf.exp(self.loss))    # trivial PPL
+			self.eval_metric = tf.exp(self.loss)    # trivial PPL
 
 			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', self.loss)
 
