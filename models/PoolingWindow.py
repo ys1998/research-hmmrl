@@ -152,7 +152,7 @@ class Model(object):
 				# temp_loss has shape [batch_size, timesteps]
 				# create mask to discard effect of padding
 				mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
-				self.loss = tf.reduce_mean(tf.reduce_sum(mask * temp_loss, axis=1)/self.valid_tsteps)
+				self.loss = tf.reduce_mean(tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32))
 
 			# Optimizer
 			with tf.variable_scope("optimizer", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
