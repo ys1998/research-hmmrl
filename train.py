@@ -33,7 +33,7 @@ def main():
 	args = parser.parse_args()
 	with open(args.config_file, 'r') as stream:
 		config = munchify(yaml.load(stream))
-		print(config)
+		# print(config)
 	args.save_dir = os.path.join(args.save_dir, args.job_id)
 	args.best_dir = os.path.join(args.best_dir, args.job_id)
 	if not os.path.exists(args.save_dir):
@@ -130,7 +130,9 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	states = init_states
 
 	if mode == 'val':
-		acc_metric = 0.0
+		acc_loss = np.zeros(batch_loader.batch_size)
+		acc_lengths = np.zeros(batch_loader.batch_size)
+		sentence_ppls = []
 
 	end_epoch = False
 	b = 1
@@ -142,20 +144,26 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
-			
-			for i in range(len(reset)):
-				if reset[i] == 1.0:
-					states[:,:,i,:] = init_states[:,:,i,:]
 
 			loss, states = model.forward(sess, x, y, states, lengths, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
-			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, loss, end - start)
+			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, np.mean(loss), end - start)
+
+			for i in range(len(reset)):
+				if reset[i] == 1.0:
+					states[:,:,i,:] = init_states[:,:,i,:]
 
 		elif mode == 'val':
-			metric = model.forward(sess, x, y, states, lengths, mode=mode)
+			loss = model.forward(sess, x, y, states, lengths, mode=mode)
 			# accumulate evaluation metric here
-			acc_metric += np.log(metric)
+			acc_loss += loss*lengths
+			acc_lengths += lengths
+			for i in range(len(reset)):
+				if reset[i] == 1.0:
+					states[:,:,i,:] = init_states[:,:,i,:]
+					sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
+					acc_loss[i] = acc_lengths[i] = 0.0
 		
 		b += 1
 
@@ -163,10 +171,11 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	# After epoch is complete
 	batch_loader.reset_pointers()
 	if mode == 'val':
-		# find metric from accumulated metrics of mini batches
-		final_metric = np.exp(acc_metric/b)
+		# find metric from accumulated metrics of sentences
+		final_metric = np.mean(sentence_ppls)
 		best_metric = model.best_metric.eval()
-		logger.info("Evaluation metric = %.4f", final_metric)
+		print("Sentence-wise perplexities\n", sentence_ppls)
+		logger.info("(Averaged) Evaluation metric = %.4f", final_metric)
 		logger.info("Best metric = %.4f", best_metric)
 		if final_metric < best_metric:
 			logger.info("Metric improved, saving best model")

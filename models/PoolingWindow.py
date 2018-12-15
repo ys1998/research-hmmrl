@@ -155,7 +155,7 @@ class Model(object):
 				# temp_loss has shape [batch_size, timesteps]
 				# create mask to discard effect of padding
 				mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
-				self.loss = tf.reduce_mean(tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32))
+				self.loss = tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32)
 
 			# Optimizer
 			with tf.variable_scope("optimizer", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -166,9 +166,6 @@ class Model(object):
 				# optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
 				optim = tf.train.AdamOptimizer(learning_rate=self._lr)
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
-			
-			# Evaluation metric
-			self.eval_metric = tf.exp(self.loss)    # trivial PPL
 
 			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', self.loss)
 
@@ -256,7 +253,7 @@ class Model(object):
 			self.local_initializer = tf.local_variables_initializer()
 
 			# Saver
-			self.saver = tf.train.Saver(max_to_keep=3, var_list=tf.global_variables())
+			self.saver = tf.train.Saver(max_to_keep=1, var_list=tf.global_variables())
 
 			self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
 			self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
@@ -292,7 +289,7 @@ class Model(object):
 			self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
 			return res[0], res[1] # ignore the output of assign_op
 		elif mode == 'val':
-			return sess.run(self.eval_metric, feed_dict = {
+			return sess.run(self.loss, feed_dict = {
 				self._char_idx: idx,
 				self._lengths: lengths,
 				self._word_idx: np.reshape(word_idx, [2,-1]),
@@ -300,7 +297,13 @@ class Model(object):
 				self._valid_tsteps: valid_tsteps
 			})
 		elif mode == 'test':
-			pass
+			return sess.run([self.loss, self.prediction], feed_dict = {
+				self._char_idx: idx,
+				self._lengths: lengths,
+				self._word_idx: np.reshape(word_idx, [2,-1]),
+				self._states: self.initial_states if states is None else states,
+				self._valid_tsteps: valid_tsteps
+			})
 
 	def fine_tune(self, sess):
 		""" Perform Attract-Preserve fine-tuning on embedding """
