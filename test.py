@@ -125,8 +125,14 @@ def test(config, model_dir, test_dir):
 					acc_loss[i] = acc_lengths[i] = 0.0
 
 		# find metric from accumulated metrics of sentences
+		print("Sentence-wise perplexities")
+		sentence_ppls = sorted(sentence_ppls)
+		for i in range(len(sentence_ppls)//5):
+			for j in range(5):
+				print("%.4f" % sentence_ppls[5*i+j], end='\t\t')
+			print("")
+		
 		final_metric = np.mean(sentence_ppls)
-		print("Sentence-wise perplexities\n", sentence_ppls)
 		print("(Averaged) Evaluation metric = %.4f" % final_metric)
 
 if __name__ == '__main__':
