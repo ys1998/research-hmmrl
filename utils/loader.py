@@ -38,9 +38,10 @@ class DataLoader(object):
 				test_text = f.read()
 			
 			# Convert text to tokens
-			tokens, _ = tokenize_func(test_data=test_text)
+			tokens, vocabs = tokenize_func(test_data=test_text, save_dir=data_dir)
 			# Store data
 			self.data = tokens
+			self.vocabs = vocabs
 
 class BatchLoader(object):
 	"""This class is used to build batches of data."""

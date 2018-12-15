@@ -1,0 +1,43 @@
+batch_size: 20
+timesteps: 35
+num_dims: 1100
+n_layers: 2
+word_vocab_size: 50394 ##
+word_dims: 650
+char_vocab_size: 561 ## after including <w> and </w>
+char_dims: 15
+num_units: 400
+lstm_clip: 10.0
+grad_clip: 5.0
+max_word_length: 257 ## after including <w> and </w>
+kernel_sizes:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+kernel_features:
+  - 50
+  - 100
+  - 150
+  - 200
+  - 200
+  - 200
+  - 200
+sliding_window_size: 5
+epochs: 30
+initial_learning_rate: 1.0
+lr_decay: 0.5
+keep_prob: 0.5
+
+# fine-tuning constants
+fine_tune_pos_words: 3
+fine_tune_neg_words: 3
+fine_tune_delta: 0.6
+fine_tune_reg: 1e-9
+fine_tune_grad_clip: 2
+fine_tune_lr: 0.05
+fine_tune_num_iters: 20
+fine_tune_cue_threshold: 5
