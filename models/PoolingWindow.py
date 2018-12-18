@@ -296,7 +296,15 @@ class Model(object):
 				self._valid_tsteps: valid_tsteps
 			})
 		elif mode == 'test':
-			return sess.run([self.loss, self.prediction], feed_dict = {
+			return sess.run([self.loss], feed_dict = {
+				self._char_idx: idx,
+				self._lengths: lengths,
+				self._word_idx: np.reshape(word_idx, [2,-1]),
+				self._states: self.initial_states if states is None else states,
+				self._valid_tsteps: valid_tsteps
+			})
+		elif mode == 'gen':
+			return sess.run([self.prediction, self.final_states], feed_dict = {
 				self._char_idx: idx,
 				self._lengths: lengths,
 				self._word_idx: np.reshape(word_idx, [2,-1]),
