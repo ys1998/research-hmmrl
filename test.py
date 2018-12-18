@@ -100,8 +100,8 @@ def generate(config, model_dir, prior_dir):
 		sess.graph.finalize()
 
 		# Start from an empty RNN state
-		init_states = sess.run(model.initial_states)
-		lengths = [1] + [0]*(config.batch_size - 1)
+		init_states = sess.run(model.initial_states, feed_dict={model._batch_size:1})
+		lengths = [1]
 		
 		for sentence in prior_text['test']:
 			sentence = ['<s>'] + sentence
@@ -109,18 +109,18 @@ def generate(config, model_dir, prior_dir):
 			for idx in range(len(sentence) - 1):
 				print(sentence[idx], end=' ')
 				# prepare batch
-				x = np.full([config.batch_size, config.timesteps], '<pad>')
+				x = np.full([1, config.timesteps], '<pad>')
 				x[0][0] = sentence[idx]
 				x = lmmrl_encoder(x, vocabs)
-				_, states = model.forward(sess, x=x, states=states, valid_tsteps=lengths, mode='gen')
+				_, states = model.forward(sess, config, x=x, states=states, valid_tsteps=lengths, mode='gen')
 
 			generated_tokens = 0
-			x = np.full([config.batch_size, config.timesteps], '<pad>')
+			x = np.full([1, config.timesteps], '<pad>')
 			x[0][0] = sentence[-1]
 			x = lmmrl_encoder(x, vocabs)
 
 			while True:
-				probs, states = model.forward(sess, x=x, states=states, valid_tsteps=lengths, mode='gen')
+				probs, states = model.forward(sess, config, x=x, states=states, valid_tsteps=lengths, mode='gen')
 				print(np.sum(probs[0,0]))
 				# predict next token
 				next_token = rev_vocab[np.argmax(probs[0, 0, :])]
@@ -129,7 +129,7 @@ def generate(config, model_dir, prior_dir):
 				if next_token == '</s>' or generated_tokens >= config.max_tokens:
 					break
 				else:
-					x = np.full([config.batch_size, config.timesteps], '<pad>')
+					x = np.full([1, config.timesteps], '<pad>')
 					x[0][0] = next_token
 					x = lmmrl_encoder(x, vocabs)
 
@@ -164,7 +164,7 @@ def test(config, model_dir, test_dir):
 		# Prepare loader
 		batch_loader.reset_pointers()
 		# Start from an empty RNN state
-		init_states = sess.run(model.initial_states)
+		init_states = sess.run(model.initial_states, feed_dict={model._batch_size:config.batch_size})
 		states = init_states
 
 		acc_loss = np.zeros(batch_loader.batch_size)
@@ -177,7 +177,7 @@ def test(config, model_dir, test_dir):
 			x, y, lengths, reset, end_epoch = batch_loader.next_batch()
 			if end_epoch:
 				break
-			loss = model.forward(sess, x, y, states, lengths, mode='test')
+			loss = model.forward(sess, config, x, y, states, lengths, mode='test')
 			# accumulate evaluation metric here
 			acc_loss += loss*lengths
 			acc_lengths += lengths

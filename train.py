@@ -126,7 +126,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	# Prepare loader for new epoch
 	batch_loader.reset_pointers()
 	# Start from an empty RNN state
-	init_states = sess.run(model.initial_states)
+	init_states = sess.run(model.initial_states, feed_dict={model._batch_size:model.config.batch_size})
 	states = init_states
 
 	if mode == 'val':
@@ -145,7 +145,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			# can update the learning rate here, if required
 			# lr = 1.0
 
-			loss, states = model.forward(sess, x, y, states, lengths, lr, mode)
+			loss, states = model.forward(sess, model.config, x, y, states, lengths, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, np.mean(loss), end - start)
@@ -155,7 +155,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 					states[:,:,i,:] = init_states[:,:,i,:]
 
 		elif mode == 'val':
-			loss = model.forward(sess, x, y, states, lengths, mode=mode)
+			loss = model.forward(sess, model.config, x, y, states, lengths, mode=mode)
 			# accumulate evaluation metric here
 			acc_loss += loss*lengths
 			acc_lengths += lengths

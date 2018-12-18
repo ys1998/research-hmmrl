@@ -18,12 +18,15 @@ class Model(object):
 		self.graph = tf.Graph()
 		with self.graph.as_default():
 			# Placeholders for input tensors/matrices
-			self._char_idx = tf.placeholder(tf.int32, [None], name="char_input_indices")
-			self._lengths = tf.placeholder(tf.int32, [config.batch_size * config.timesteps], name="word_lengths")
-			self._word_idx = tf.placeholder(tf.int32, [2, config.batch_size*config.timesteps], name="word_indices")
-			self._states = tf.placeholder(tf.float32, [config.n_layers, 2, config.batch_size, config.num_units], name="lstm_states")
+			self._char_idx = tf.placeholder(tf.int32, [None, config.timesteps, config.max_word_length], name="char_input_indices")
+			self._lengths = tf.placeholder(tf.int32, [None, config.timesteps], name="word_lengths")
+			self._word_idx = tf.placeholder(tf.int32, [2, None, config.timesteps], name="word_indices")
+			self._states = tf.placeholder(tf.float32, [config.n_layers, 2, None, config.num_units], name="lstm_states")
+			self._valid_tsteps = tf.placeholder(tf.int32, [None], name="valid_timesteps")
+
+			# Parameters
+			self._batch_size = tf.placeholder(tf.int32, shape=[], name="batch_size")
 			self._lr = tf.placeholder_with_default(1.0, shape=[], name="learning_rate")
-			self._valid_tsteps = tf.placeholder(tf.int32, [config.batch_size], name="valid_timesteps")
 			
 			# TensorFlow variables
 			self.global_step = tf.Variable(0, trainable=False, name="global_step")
@@ -36,8 +39,9 @@ class Model(object):
 			# Other variables
 			self.config = config
 			inp_words, targets = tf.unstack(self._word_idx)
-			inp_words = tf.reshape(inp_words, [config.batch_size, config.timesteps, 1])
-			targets = tf.reshape(targets, [config.batch_size, config.timesteps])
+			# inp_words = tf.reshape(inp_words, [-1, config.timesteps, 1])
+			inp_words = tf.expand_dims(inp_words, axis=2)
+			# targets = tf.reshape(targets, [-1, config.timesteps])
 
 			# Create embeddings
 			with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -54,13 +58,15 @@ class Model(object):
 
 			# Extract character vectors from embedding
 			with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
-				char_vecs = tf.gather(self.char_embedding, self._char_idx)
-				char_vecs = tf.split(char_vecs, self._lengths)
-				char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
-								for cv, l in zip(char_vecs, tf.unstack(self._lengths, axis=0))]
-				char_vecs = tf.transpose(tf.stack(char_vecs), [0, 2, 1])
+				char_vecs = tf.gather(self.char_embedding, self._char_idx, axis=0)
+				# char_vecs = tf.split(char_vecs, self._lengths)
+				# char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
+				# 				for cv, l in zip(char_vecs, tf.unstack(self._lengths, axis=0))]
+				char_vecs = tf.transpose(char_vecs, [0, 1, 3, 2])
+				mask = tf.sequence_mask(self._lengths, maxlen=config.max_word_length, dtype=tf.float32)
+				char_vecs = tf.tile(tf.expand_dims(mask, axis=2), [1, 1, config.char_dims, 1])*char_vecs
 
-				char_vecs = tf.reshape(char_vecs, [config.batch_size, config.timesteps, config.char_dims, config.max_word_length])
+				# char_vecs = tf.reshape(char_vecs, [-1, config.timesteps, config.char_dims, config.max_word_length])
 
 			# Apply convolution
 			with tf.variable_scope("convolution", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -86,7 +92,7 @@ class Model(object):
 
 			# Two-layer highway network
 			with tf.variable_scope("highway", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
-				self.transformation_unit = TransformationUnit([config.batch_size, config.num_dims], config.keep_prob)
+				self.transformation_unit = TransformationUnit(config.num_dims, config.keep_prob)
 
 			# LSTM network
 			with tf.variable_scope("lstm", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -109,7 +115,7 @@ class Model(object):
 
 				self.initial_states = []
 				for i in range(config.n_layers):
-					st = self.lstm_cells[i].zero_state(config.batch_size, tf.float32)
+					st = self.lstm_cells[i].zero_state(self._batch_size, tf.float32)
 					self.initial_states.append(tf.stack([st.c, st.h], axis=0))
 
 				self.initial_states = tf.stack(self.initial_states, axis=0, name="initial_states")
@@ -140,16 +146,15 @@ class Model(object):
 					name="final_states"
 				)
 
-				outputs = tf.reshape(outputs, [config.batch_size*config.timesteps, -1])
+				outputs = tf.reshape(outputs, [-1, self.combined_unit.output_size])
 
 			# Projection and softmax layer
 			output = tf.layers.dense(outputs, config.word_dims, name="projection")
 			with tf.variable_scope("softmax", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				logits = tf.matmul(output, self.output_word_embedding, transpose_b=True)
-				logits = tf.reshape(logits, [config.batch_size, config.timesteps, -1])
+				logits = tf.reshape(logits, [-1, config.timesteps, config.word_vocab_size])
 
-				self.prediction = tf.nn.softmax(logits, dim=1, name="prediction")
-				self.prediction = tf.reshape(self.prediction, [config.batch_size, config.timesteps, -1])
+				self.prediction = tf.nn.softmax(logits, dim=2, name="prediction")
 
 				temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
 				# temp_loss has shape [batch_size, timesteps]
@@ -167,7 +172,7 @@ class Model(object):
 				optim = tf.train.AdamOptimizer(learning_rate=self._lr)
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 
-			self.ce_loss_summary = tf.summary.tensor_summary('cross_entropy_loss', self.loss)
+			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', tf.reduce_mean(self.loss))
 
 			###############################################################################################
 			# Fine tuning operations
@@ -258,19 +263,20 @@ class Model(object):
 			self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
 			self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
 
-	def forward(self, sess, x, y=None, states=None, valid_tsteps=None, lr=1.0, mode='train'):
+	def forward(self, sess, config, x, y=None, states=None, valid_tsteps=None, lr=1.0, mode='train'):
 		""" Perform one forward and backward pass (only when required) over the network """
 		
 		# Storing the indices of input and output words
 		word_idx = np.zeros([2, x.shape[0], x.shape[1]])
-		lengths = []; idx = []
+		word_lengths = np.zeros(x.shape)
+		char_idx = np.zeros(x.shape + (config.max_word_length,))
 
 		# Generate character indices, word lengths for obtaining word vectors
 		# Also fill the input and output word indices in word_idx
 		for i in range(x.shape[0]):
 			for j in range(x.shape[1]):
-				lengths += [len(x[i,j][2])]
-				idx += x[i,j][2]
+				word_lengths[i,j] = len(x[i,j][2])
+				char_idx[i, j, :len(x[i,j][2])] = x[i,j][2]
 				word_idx[0, i, j] = x[i,j][0]
 				if y is not None:
 					word_idx[1, i, j] = y[i,j][0]
@@ -279,36 +285,28 @@ class Model(object):
 		if mode == 'train':
 			res = sess.run([self.loss, self.final_states, self.train_op, self.ce_loss_summary], 
 				feed_dict = {
-					self._char_idx: idx,
-					self._lengths: lengths,
-					self._word_idx: np.reshape(word_idx, [2,-1]),
+					self._char_idx: char_idx,
+					self._lengths: word_lengths,
+					self._word_idx: word_idx,
 					self._lr: lr,
 					self._states: self.initial_states if states is None else states,
 					self._valid_tsteps: valid_tsteps
 				})
 			self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
 			return res[0], res[1] # ignore the output of assign_op
-		elif mode == 'val':
+		elif mode == 'val' or mode == 'test':
 			return sess.run(self.loss, feed_dict = {
-				self._char_idx: idx,
-				self._lengths: lengths,
-				self._word_idx: np.reshape(word_idx, [2,-1]),
-				self._states: self.initial_states if states is None else states,
-				self._valid_tsteps: valid_tsteps
-			})
-		elif mode == 'test':
-			return sess.run([self.loss], feed_dict = {
-				self._char_idx: idx,
-				self._lengths: lengths,
-				self._word_idx: np.reshape(word_idx, [2,-1]),
+				self._char_idx: char_idx,
+				self._lengths: word_lengths,
+				self._word_idx: word_idx,
 				self._states: self.initial_states if states is None else states,
 				self._valid_tsteps: valid_tsteps
 			})
 		elif mode == 'gen':
 			return sess.run([self.prediction, self.final_states], feed_dict = {
-				self._char_idx: idx,
-				self._lengths: lengths,
-				self._word_idx: np.reshape(word_idx, [2,-1]),
+				self._char_idx: char_idx,
+				self._lengths: word_lengths,
+				self._word_idx: word_idx,
 				self._states: self.initial_states if states is None else states,
 				self._valid_tsteps: valid_tsteps
 			})

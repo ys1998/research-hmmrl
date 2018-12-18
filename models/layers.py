@@ -104,14 +104,14 @@ class PoolingWindow(object):
 		return tf.reduce_sum(attention * x, axis=2)
 
 class TransformationUnit(object):
-	def __init__(self, input_shape, keep_prob):
-		self._drop1 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=input_shape)
-		self._dense1 = tf.layers.Dense(input_shape[1], activation=tf.nn.relu)
-		self._dense2 = tf.layers.Dense(input_shape[1], activation=tf.nn.sigmoid)
+	def __init__(self, input_dims, keep_prob):
+		self._drop1 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=[1, input_dims])
+		self._dense1 = tf.layers.Dense(input_dims, activation=tf.nn.relu)
+		self._dense2 = tf.layers.Dense(input_dims, activation=tf.nn.sigmoid)
 
-		self._drop2 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=input_shape)
-		self._dense3 = tf.layers.Dense(input_shape[1], activation=tf.nn.relu)
-		self._dense4 = tf.layers.Dense(input_shape[1], activation=tf.nn.sigmoid)
+		self._drop2 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=[1, input_dims])
+		self._dense3 = tf.layers.Dense(input_dims, activation=tf.nn.relu)
+		self._dense4 = tf.layers.Dense(input_dims, activation=tf.nn.sigmoid)
 
 	def __call__(self, inputs):
 		dropped_inp = self._drop1(inputs)
