@@ -52,7 +52,7 @@ class BatchLoader(object):
 		self.data_loader = data_loader
 		self.batch_size = batch_size
 		self.timesteps = timesteps
-		self.mode = mode
+		self.mode = modeshuffle
 
 		self.reset_pointers()		
 

@@ -27,6 +27,7 @@ kernel_features:
   - 200
   - 200
 sliding_window_size: 5
+max_tokens: 30
 epochs: 30
 initial_learning_rate: 0.001
 lr_decay: 0.5
