@@ -167,7 +167,7 @@ class Model(object):
 				optim = tf.train.AdamOptimizer(learning_rate=self._lr)
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 
-			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', self.loss)
+			self.ce_loss_summary = tf.summary.tensor_summary('cross_entropy_loss', self.loss)
 
 			###############################################################################################
 			# Fine tuning operations
