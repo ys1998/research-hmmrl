@@ -101,11 +101,11 @@ def generate(config, model_dir, prior_dir):
 
 		# Start from an empty RNN state
 		init_states = sess.run(model.initial_states)
-		states = init_states
 		lengths = [1] + [0]*(config.batch_size - 1)
 		
 		for sentence in prior_text['test']:
 			sentence = ['<s>'] + sentence
+			states = init_states
 			for idx in range(len(sentence) - 1):
 				print(sentence[idx], end=' ')
 				# prepare batch
@@ -121,6 +121,7 @@ def generate(config, model_dir, prior_dir):
 
 			while True:
 				probs, states = model.forward(sess, x=x, states=states, valid_tsteps=lengths, mode='gen')
+				print(np.sum(probs[0,0]))
 				# predict next token
 				next_token = rev_vocab[np.argmax(probs[0, 0, :])]
 				print(next_token, end=' ')
