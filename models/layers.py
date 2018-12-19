@@ -85,8 +85,6 @@ class PoolingWindow(object):
 			global_feats = global_feats + tf.matmul(lstm_states[i].c, self.weights['W_l'+str(i+1)])
 		for i in range(len(prev_word_vecs)):
 			global_feats = global_feats + tf.matmul(prev_word_vecs[i], self.weights['W_v'+str(i+1)])
-		# normalize global_feats so that they have same mag. as local_feats
-		# global_feats = global_feats/tf.norm(global_feats + 1e-9, axis=1, keepdims=True)
 
 		# local attention features
 		local_feats = tf.one_hot(tf.argmax(x, axis=2), self.max_word_len)
@@ -104,32 +102,28 @@ class PoolingWindow(object):
 		return tf.reduce_sum(attention * x, axis=2)
 
 class TransformationUnit(object):
-	def __init__(self, input_dims, keep_prob):
-		self._drop1 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=[1, input_dims])
+	def __init__(self, input_dims):
 		self._dense1 = tf.layers.Dense(input_dims, activation=tf.nn.relu)
 		self._dense2 = tf.layers.Dense(input_dims, activation=tf.nn.sigmoid)
 
-		self._drop2 = tf.layers.Dropout(rate=1-keep_prob, noise_shape=[1, input_dims])
 		self._dense3 = tf.layers.Dense(input_dims, activation=tf.nn.relu)
 		self._dense4 = tf.layers.Dense(input_dims, activation=tf.nn.sigmoid)
 
 	def __call__(self, inputs):
-		dropped_inp = self._drop1(inputs)
-		x1 = self._dense1(dropped_inp)
-		t1 = self._dense2(dropped_inp)
+		x1 = self._dense1(inputs)
+		t1 = self._dense2(inputs)
 		int_inp = x1*t1 + inputs*(1-t1)
 
-		dropped_int_inp = self._drop2(int_inp)
-		x2 = self._dense3(dropped_int_inp)
-		t2 = self._dense4(dropped_int_inp)
+		x2 = self._dense3(int_inp)
+		t2 = self._dense4(int_inp)
 		return x2*t2 + int_inp*(1-t2)
 
 class ConvPoolLSTMUnit(object):
-	def __init__(self, conv_units, pooling_windows, transformation_unit, lstm_cells, word_embedding, k):
+	def __init__(self, conv_units, pooling_windows, transformation_unit, lstm_unit, word_embedding, k):
 		self.conv_units = conv_units
 		self.pooling_windows = pooling_windows
 		self.transformation_unit = transformation_unit
-		self.lstm_cells = lstm_cells
+		self.lstm_unit = lstm_unit
 		self.k = k
 		self.word_embedding = word_embedding
 		self.prev_word_vecs = deque([], maxlen=k)
@@ -148,21 +142,17 @@ class ConvPoolLSTMUnit(object):
 		self.prev_word_vecs.append(output)
 
 		with tf.control_dependencies([tf.scatter_update(self.word_embedding, tf.squeeze(word_idx, axis=1), output)]):
-			fstates = []
-			for i, cell in enumerate(self.lstm_cells):
-				with tf.variable_scope("layer_"+str(i+1)):
-					output, fstate = cell(output, states[i])
-					fstates.append(fstate)
+			output, fstates = self.lstm_unit(output, states)
 
-		return output, fstates
+		return output, list(fstates)
 
 	@property
 	def output_size(self):
-		return self.lstm_cells[-1].output_size
+		return self.lstm_unit.output_size
 
 	@property
 	def state_size(self):
-		return [c.state_size for c in self.lstm_cells]
+		return self.lstm_unit.state_size
 
 	def zero_state(self, batch_size, dtype):
 		res = []
@@ -172,6 +162,3 @@ class ConvPoolLSTMUnit(object):
 				tf.zeros([batch_size, size])
 			))
 		return res
-
-	
-	

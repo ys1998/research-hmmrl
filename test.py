@@ -112,7 +112,7 @@ def generate(config, model_dir, prior_dir):
 				x = np.full([1, config.timesteps], '<pad>')
 				x[0][0] = sentence[idx]
 				x = lmmrl_encoder(x, vocabs)
-				_, states = model.forward(sess, config, x=x, states=states, valid_tsteps=lengths, mode='gen')
+				_, states = model.forward(sess, config, x=x, states=states, mode='gen')
 
 			generated_tokens = 0
 			x = np.full([1, config.timesteps], '<pad>')
@@ -120,7 +120,7 @@ def generate(config, model_dir, prior_dir):
 			x = lmmrl_encoder(x, vocabs)
 
 			while True:
-				probs, states = model.forward(sess, config, x=x, states=states, valid_tsteps=lengths, mode='gen')
+				probs, states = model.forward(sess, config, x=x, states=states, mode='gen')
 				print(np.sum(probs[0,0]))
 				# predict next token
 				# next_token = rev_vocab[np.argmax(probs[0, 0, :])]
@@ -169,36 +169,37 @@ def test(config, model_dir, test_dir):
 		states = init_states
 
 		acc_loss = np.zeros(batch_loader.batch_size)
-		acc_lengths = np.zeros(batch_loader.batch_size)
-		sentence_ppls = []
+		# acc_lengths = np.zeros(batch_loader.batch_size)
+		# sentence_ppls = []
 
 		end_epoch = False
 		b = 1
 		while not end_epoch:
-			x, y, lengths, reset, end_epoch = batch_loader.next_batch()
-			if end_epoch:
-				break
-			loss = model.forward(sess, config, x, y, states, lengths, mode='test')
+			# x, y, lengths, reset, end_epoch = batch_loader.next_batch()
+			# if end_epoch:
+			# 	break
+			x, y = batch_loader.next_batch()
+			loss = model.forward(sess, config, x, y, states, mode='test')
 			# accumulate evaluation metric here
 			acc_loss += loss*lengths
-			acc_lengths += lengths
+			# acc_lengths += lengths
 			print("Batch = %d, Average loss = %.4f" % (b, np.mean(loss)))
 			b += 1
-			for i in range(len(reset)):
-				if reset[i] == 1.0:
-					states[:,:,i,:] = init_states[:,:,i,:]
-					sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
-					acc_loss[i] = acc_lengths[i] = 0.0
+			# for i in range(len(reset)):
+			# 	if reset[i] == 1.0:
+			# 		states[:,:,i,:] = init_states[:,:,i,:]
+			# 		sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
+			# 		acc_loss[i] = acc_lengths[i] = 0.0
 
 		# find metric from accumulated metrics of sentences
-		print("Sentence-wise perplexities")
-		sentence_ppls = sorted(sentence_ppls)
-		for i in range(len(sentence_ppls)//5):
-			for j in range(5):
-				print("%.4f" % sentence_ppls[5*i+j], end='\t\t')
-			print("")
+		# print("Sentence-wise perplexities")
+		# sentence_ppls = sorted(sentence_ppls)
+		# for i in range(len(sentence_ppls)//5):
+		# 	for j in range(5):
+		# 		print("%.4f" % sentence_ppls[5*i+j], end='\t\t')
+		# 	print("")
 		
-		final_metric = np.mean(sentence_ppls)
+		final_metric = np.exp(np.mean(acc_loss)/b)
 		print("(Averaged) Evaluation metric = %.4f" % final_metric)
 
 if __name__ == '__main__':

@@ -22,15 +22,15 @@ class Model(object):
 			self._lengths = tf.placeholder(tf.int32, [None, config.timesteps], name="word_lengths")
 			self._word_idx = tf.placeholder(tf.int32, [2, None, config.timesteps], name="word_indices")
 			self._states = tf.placeholder(tf.float32, [config.n_layers, 2, None, config.num_units], name="lstm_states")
-			self._valid_tsteps = tf.placeholder(tf.int32, [None], name="valid_timesteps")
+			# self._valid_tsteps = tf.placeholder(tf.int32, [None], name="valid_timesteps")
 
 			# Parameters
-			self._batch_size = tf.placeholder(tf.int32, shape=[], name="batch_size")
+			self._batch_size = tf.placeholder_with_default(20, shape=[], name="batch_size")
 			self._lr = tf.placeholder_with_default(1.0, shape=[], name="learning_rate")
 			
 			# TensorFlow variables
 			self.global_step = tf.Variable(0, trainable=False, name="global_step")
-			self.best_metric = tf.Variable(1000.0, trainable=False, name="best_metric")
+			self.best_metric = tf.Variable(5000.0, trainable=False, name="best_metric")
 			self.new_best_metric = tf.placeholder(tf.float32, shape=[], name="new_best_metric")
 			self.update_best_metric = tf.assign(self.best_metric, self.new_best_metric)
 			self.epoch_cntr = tf.Variable(0, trainable=False, name="epoch_counter")
@@ -59,9 +59,6 @@ class Model(object):
 			# Extract character vectors from embedding
 			with tf.variable_scope("extract_char_vectors", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				char_vecs = tf.gather(self.char_embedding, self._char_idx, axis=0)
-				# char_vecs = tf.split(char_vecs, self._lengths)
-				# char_vecs = [tf.pad(cv, [[0, config.max_word_length-l], [0, 0]], 'CONSTANT', name="pad") 
-				# 				for cv, l in zip(char_vecs, tf.unstack(self._lengths, axis=0))]
 				char_vecs = tf.transpose(char_vecs, [0, 1, 3, 2])
 				mask = tf.sequence_mask(self._lengths, maxlen=config.max_word_length, dtype=tf.float32)
 				char_vecs = tf.tile(tf.expand_dims(mask, axis=2), [1, 1, config.char_dims, 1])*char_vecs
@@ -92,14 +89,12 @@ class Model(object):
 
 			# Two-layer highway network
 			with tf.variable_scope("highway", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
-				self.transformation_unit = TransformationUnit(config.num_dims, config.keep_prob)
+				self.transformation_unit = TransformationUnit(config.num_dims)
 
 			# LSTM network
 			with tf.variable_scope("lstm", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
-				self.lstm_cells = []
-				for i in range(config.n_layers):
-					with tf.variable_scope("layer_"+str(i+1)):
-						cell = tf.contrib.rnn.DropoutWrapper(
+				def create_lstm_cell():
+					return tf.contrib.rnn.DropoutWrapper(
 								tf.contrib.rnn.LSTMCell(
 									num_units=config.num_units,
 									cell_clip=config.lstm_clip,
@@ -107,45 +102,30 @@ class Model(object):
 									activation=tf.nn.relu,
 									reuse=False
 									),
-								input_keep_prob = config.keep_prob,
-								output_keep_prob = config.keep_prob,
-								state_keep_prob = config.keep_prob)
-						self.lstm_cells.append(cell) 
+								output_keep_prob = config.keep_prob)
+
+				self.lstm_unit = tf.contrib.rnn.MultiRNNCell([create_lstm_cell() for _ in range(config.n_layers)], state_is_tuple=True)
 							
-
-				self.initial_states = []
-				for i in range(config.n_layers):
-					st = self.lstm_cells[i].zero_state(self._batch_size, tf.float32)
-					self.initial_states.append(tf.stack([st.c, st.h], axis=0))
-
-				self.initial_states = tf.stack(self.initial_states, axis=0, name="initial_states")
+				self.initial_states = tf.stack(self.lstm_unit.zero_state(self._batch_size, tf.float32))
 
 			with tf.variable_scope("combined_unit", reuse=False, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				self.combined_unit = ConvPoolLSTMUnit(
 					self.conv_units,
 					self.pooling_windows,
 					self.transformation_unit,
-					self.lstm_cells,
+					self.lstm_unit,
 					self.input_word_embedding,
 					config.sliding_window_size
 				)
 
-				states = tf.unstack(self._states, axis=0)
-				states = [tf.contrib.rnn.LSTMStateTuple(st[0], st[1]) for st in states]
-
 				outputs, fstates = tf.nn.dynamic_rnn(
 					self.combined_unit, 
 					[char_vecs, inp_words], 
-					initial_state=states,
-					sequence_length=self._valid_tsteps
+					initial_state=[tf.contrib.rnn.LSTMStateTuple(st[0], st[1]) for st in tf.unstack(self._states, axis=0)] #,
+					# sequence_length=self._valid_tsteps
 				)
 
-				self.final_states = tf.stack(
-					[tf.stack([fstate.c, fstate.h], axis=0) for fstate in fstates], 
-					axis=0, 
-					name="final_states"
-				)
-
+				self.final_states = tf.stack([tf.stack([st.c, st.h]) for st in fstates])
 				outputs = tf.reshape(outputs, [-1, self.combined_unit.output_size])
 
 			# Projection and softmax layer
@@ -156,11 +136,16 @@ class Model(object):
 
 				self.prediction = tf.nn.softmax(logits, dim=2, name="prediction")
 
-				temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
+				# temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
 				# temp_loss has shape [batch_size, timesteps]
 				# create mask to discard effect of padding
-				mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
-				self.loss = tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32)
+				# mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
+				# self.loss = tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32)
+				self.loss = tf.reduce_sum(
+					tf.nn.sparse_softmax_cross_entropy_with_logits(
+						logits=logits, 
+						labels=targets),
+					axis=1) / config.timesteps
 
 			# Optimizer
 			with tf.variable_scope("optimizer", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -168,8 +153,8 @@ class Model(object):
 				tvars = tf.trainable_variables()
 				grads = tf.gradients(self.loss, tvars)
 				clipped_grads, _ = tf.clip_by_global_norm(grads, config.grad_clip)
-				# optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
-				optim = tf.train.AdamOptimizer(learning_rate=self._lr)
+				optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
+				# optim = tf.train.AdamOptimizer(learning_rate=self._lr)
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 
 			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', tf.reduce_mean(self.loss))
@@ -215,7 +200,6 @@ class Model(object):
 				
 				# Compute dot products of cue word with positive and negative words
 				# Use output word embedding for obtaining word vectors
-				# pos_vals = tf.gather(self.output_word_embedding, ft_pos_idx) * self.output_word_embedding[ft_idx]
 				cue_word_vecs = tf.gather(self.output_word_embedding, self.valid_cue_words)
 				pos_vals = tf.einsum('ijk,ik->ij',
 					tf.reshape(tf.gather(self.output_word_embedding, tf.reshape(ft_pos_idx, [-1])), 
@@ -263,7 +247,7 @@ class Model(object):
 			self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
 			self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())
 
-	def forward(self, sess, config, x, y=None, states=None, valid_tsteps=None, lr=1.0, mode='train'):
+	def forward(self, sess, config, x, y=None, states=None, lr=1.0, mode='train'):
 		""" Perform one forward and backward pass (only when required) over the network """
 		
 		# Storing the indices of input and output words
@@ -289,8 +273,8 @@ class Model(object):
 					self._lengths: word_lengths,
 					self._word_idx: word_idx,
 					self._lr: lr,
-					self._states: self.initial_states if states is None else states,
-					self._valid_tsteps: valid_tsteps
+					self._states: self.initial_states if states is None else states#,
+					# self._valid_tsteps: valid_tsteps
 				})
 			self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
 			return res[0], res[1] # ignore the output of assign_op
@@ -299,16 +283,16 @@ class Model(object):
 				self._char_idx: char_idx,
 				self._lengths: word_lengths,
 				self._word_idx: word_idx,
-				self._states: self.initial_states if states is None else states,
-				self._valid_tsteps: valid_tsteps
+				self._states: self.initial_states if states is None else states#,
+				# self._valid_tsteps: valid_tsteps
 			})
 		elif mode == 'gen':
 			return sess.run([self.prediction, self.final_states], feed_dict = {
 				self._char_idx: char_idx,
 				self._lengths: word_lengths,
 				self._word_idx: word_idx,
-				self._states: self.initial_states if states is None else states,
-				self._valid_tsteps: valid_tsteps
+				self._states: self.initial_states if states is None else states#,
+				# self._valid_tsteps: valid_tsteps
 			})
 
 	def fine_tune(self, sess):

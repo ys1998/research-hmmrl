@@ -131,39 +131,41 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 
 	if mode == 'val':
 		acc_loss = np.zeros(batch_loader.batch_size)
-		acc_lengths = np.zeros(batch_loader.batch_size)
-		sentence_ppls = []
+		# acc_lengths = np.zeros(batch_loader.batch_size)
+		# sentence_ppls = []
 
 	end_epoch = False
 	b = 1
 	while not end_epoch:
-		x, y, lengths, reset, end_epoch = batch_loader.next_batch()
-		if end_epoch:
-			break
+		# x, y, lengths, reset, end_epoch = batch_loader.next_batch()
+		# if end_epoch:
+		# 	break
+		x, y = batch_loader.next_batch()
 		if mode == 'train':
 			start = time.time()
 			# can update the learning rate here, if required
 			# lr = 1.0
 
-			loss, states = model.forward(sess, model.config, x, y, states, lengths, lr, mode)
+			loss, states = model.forward(sess, model.config, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, np.mean(loss), end - start)
 
-			for i in range(len(reset)):
-				if reset[i] == 1.0:
-					states[:,:,i,:] = init_states[:,:,i,:]
+			# for i in range(len(reset)):
+			# 	if reset[i] == 1.0:
+			# 		states[:,:,i,:] = init_states[:,:,i,:]
 
 		elif mode == 'val':
-			loss = model.forward(sess, model.config, x, y, states, lengths, mode=mode)
+			loss = model.forward(sess, model.config, x, y, states, mode=mode)
+			acc_loss += loss
 			# accumulate evaluation metric here
-			acc_loss += loss*lengths
-			acc_lengths += lengths
-			for i in range(len(reset)):
-				if reset[i] == 1.0:
-					states[:,:,i,:] = init_states[:,:,i,:]
-					sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
-					acc_loss[i] = acc_lengths[i] = 0.0
+			# acc_loss += loss*lengths
+			# acc_lengths += lengths
+			# for i in range(len(reset)):
+			# 	if reset[i] == 1.0:
+			# 		states[:,:,i,:] = init_states[:,:,i,:]
+			# 		sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
+			# 		acc_loss[i] = acc_lengths[i] = 0.0
 		
 		b += 1
 
@@ -172,9 +174,10 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	batch_loader.reset_pointers()
 	if mode == 'val':
 		# find metric from accumulated metrics of sentences
-		final_metric = np.mean(sentence_ppls)
+		# final_metric = np.mean(sentence_ppls)
+		final_metric = np.exp(np.mean(acc_loss)/b)
 		best_metric = model.best_metric.eval()
-		print("Sentence-wise perplexities\n", sentence_ppls)
+		# print("Sentence-wise perplexities\n", sentence_ppls)
 		logger.info("(Averaged) Evaluation metric = %.4f", final_metric)
 		logger.info("Best metric = %.4f", best_metric)
 		if final_metric < best_metric:
