@@ -176,9 +176,9 @@ def test(config, model_dir, test_dir):
 		b = 1
 		while not end_epoch:
 			# x, y, lengths, reset, end_epoch = batch_loader.next_batch()
-			# if end_epoch:
-			# 	break
-			x, y = batch_loader.next_batch()
+			x, y, end_epoch = batch_loader.next_batch()
+			if end_epoch:
+				break
 			loss = model.forward(sess, config, x, y, states, mode='test')
 			# accumulate evaluation metric here
 			acc_loss += loss*lengths

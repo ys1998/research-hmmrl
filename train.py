@@ -138,9 +138,9 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	b = 1
 	while not end_epoch:
 		# x, y, lengths, reset, end_epoch = batch_loader.next_batch()
-		# if end_epoch:
-		# 	break
-		x, y = batch_loader.next_batch()
+		x, y, end_epoch = batch_loader.next_batch()
+		if end_epoch:
+			break
 		if mode == 'train':
 			start = time.time()
 			# can update the learning rate here, if required

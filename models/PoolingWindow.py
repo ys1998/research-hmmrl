@@ -30,7 +30,7 @@ class Model(object):
 			
 			# TensorFlow variables
 			self.global_step = tf.Variable(0, trainable=False, name="global_step")
-			self.best_metric = tf.Variable(5000.0, trainable=False, name="best_metric")
+			self.best_metric = tf.Variable(100000.0, trainable=False, name="best_metric")
 			self.new_best_metric = tf.placeholder(tf.float32, shape=[], name="new_best_metric")
 			self.update_best_metric = tf.assign(self.best_metric, self.new_best_metric)
 			self.epoch_cntr = tf.Variable(0, trainable=False, name="epoch_counter")
@@ -81,7 +81,6 @@ class Model(object):
 					k=config.sliding_window_size,
 					M=config.max_word_length
 				) for n_fts in config.kernel_features]
-
 
 			###############################################################################################
 			# Passing the generated word vectors to an LSTM network after transformations

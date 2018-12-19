@@ -65,8 +65,8 @@ class BatchLoader(object):
 		for sentence in self.data:
 			raw_data += ['<s>'] + sentence + ['</s>']
 
-		num_batches = len(raw_data) // (self.batch_size * self.timesteps)
-		raw_data = raw_data[:num_batches * self.batch_size * self.timesteps]
+		self.num_batches = len(raw_data) // (self.batch_size * self.timesteps)
+		raw_data = raw_data[:self.num_batches * self.batch_size * self.timesteps]
 		self.x_batches = self.data_loader.encode_func(
 			np.asarray(raw_data).reshape([self.batch_size, -1, self.timesteps]).transpose([0,2,1]),
 			self.data_loader.vocabs
@@ -125,7 +125,10 @@ class BatchLoader(object):
 
 		# return x, y, lengths, reset, all(batch_over)
 		self.pointer += 1
-		return self.x_batches[:,:,self.pointer-1], self.y_batches[:,:,self.pointer-1]
+		if self.pointer > self.num_batches:
+			return self.x_batches[:,:,0], self.y_batches[:,:,0], True
+		else:
+			return self.x_batches[:,:,self.pointer-1], self.y_batches[:,:,self.pointer-1], False
 	
 	def reset_pointers(self):
 		"""
