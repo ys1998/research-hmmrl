@@ -139,7 +139,7 @@ class ConvPoolLSTMUnit(object):
 		inputs = tf.expand_dims(x, axis=3)
 		feat_vecs = []
 		for conv, pool in zip(self.conv_units, self.pooling_windows):
-			output = tf.transpose(tf.squeeze(conv(inputs)), [0, 2, 1])
+			output = tf.transpose(tf.squeeze(conv(inputs), axis=1), [0, 2, 1])
 			output = pool(output, states, list(self.prev_word_vecs))
 			feat_vecs.append(output)
 
@@ -147,7 +147,7 @@ class ConvPoolLSTMUnit(object):
 		output = self.transformation_unit(output)
 		self.prev_word_vecs.append(output)
 
-		with tf.control_dependencies([tf.scatter_update(self.word_embedding, tf.squeeze(word_idx), output)]):
+		with tf.control_dependencies([tf.scatter_update(self.word_embedding, tf.squeeze(word_idx, axis=1), output)]):
 			fstates = []
 			for i, cell in enumerate(self.lstm_cells):
 				with tf.variable_scope("layer_"+str(i+1)):
