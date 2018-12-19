@@ -123,7 +123,8 @@ def generate(config, model_dir, prior_dir):
 				probs, states = model.forward(sess, config, x=x, states=states, valid_tsteps=lengths, mode='gen')
 				print(np.sum(probs[0,0]))
 				# predict next token
-				next_token = rev_vocab[np.argmax(probs[0, 0, :])]
+				# next_token = rev_vocab[np.argmax(probs[0, 0, :])]
+				next_token = rev_vocab[np.random.choice(list(range(config.word_vocab_size)), p=probs[0,0])]
 				print(next_token, end=' ')
 				generated_tokens += 1
 				if next_token == '</s>' or generated_tokens >= config.max_tokens:
