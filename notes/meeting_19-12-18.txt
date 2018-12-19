@@ -1,0 +1,17 @@
+- throw out word markers
+- remove gate
+- remove global 
+- refer baseline Kim et al (tf version github)
+- character clusters
+
+- fix output part so that new morphemes are predicted
+- predict character clusters and combine them to get words 
+
+take dev set, isolate OoV words, look at how many words are fully correctly predicted by LMMRL
+
+some morphological variant of those OoV is predicted
+
+prediction probs 
+
+"tackle morphological variants of OoV"
+"select student partner"
