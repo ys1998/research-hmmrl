@@ -67,10 +67,21 @@ def train(data_dir, save_dir, best_dir, config):
 	timesteps = config.timesteps
 	num_epochs = config.epochs
 	# Load the text and vocabulary
-	data_loader = DataLoader(data_dir, mode='train', tokenize_func=lmmrl_tokenizer, encode_func=lmmrl_encoder)
+	data_loader = DataLoader(
+		data_dir, 
+		mode='train', 
+		tokenize_func=lmmrl_tokenizer, 
+		encode_func=lmmrl_encoder, 
+		word_markers=config.include_word_markers,
+		max_word_length=config.max_word_length
+	)
 	# Prepare batches for training and validation
 	train_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='train')
 	val_batch_loader = BatchLoader(data_loader, batch_size=batch_size, timesteps=timesteps, mode='val')
+
+	# update vocabulary sizes
+	config.word_vocab_size = len(data_loader.vocabs['words'])
+	config.char_vocab_size = len(data_loader.vocabs['chars'])
 
 	# Run on GPU by default
 	cfg_proto = tf.ConfigProto(intra_op_parallelism_threads=0, inter_op_parallelism_threads=0)
@@ -110,13 +121,14 @@ def train(data_dir, save_dir, best_dir, config):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)
 			# train
 			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir, lr=lr)
-			# validate
-			val_ppl = run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
 			# fine-tune after every epoch
 			model.fine_tune(sess)
+			# validate
+			val_ppl = run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
 			# update learning rate conditionally
 			if val_ppl >= last_val_ppl:
 				lr *= config.lr_decay
+				logger.info("Decaying learning rate to %.4f", lr)
 			last_val_ppl = val_ppl
 			# increment epoch
 			sess.run([model.incr_epoch])
@@ -131,13 +143,10 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 
 	if mode == 'val':
 		acc_loss = np.zeros(batch_loader.batch_size)
-		# acc_lengths = np.zeros(batch_loader.batch_size)
-		# sentence_ppls = []
 
 	end_epoch = False
 	b = 1
 	while not end_epoch:
-		# x, y, lengths, reset, end_epoch = batch_loader.next_batch()
 		x, y, end_epoch = batch_loader.next_batch()
 		if end_epoch:
 			break
@@ -151,21 +160,9 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			# print the result so far on terminal
 			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, np.mean(loss), end - start)
 
-			# for i in range(len(reset)):
-			# 	if reset[i] == 1.0:
-			# 		states[:,:,i,:] = init_states[:,:,i,:]
-
 		elif mode == 'val':
 			loss = model.forward(sess, model.config, x, y, states, mode=mode)
 			acc_loss += loss
-			# accumulate evaluation metric here
-			# acc_loss += loss*lengths
-			# acc_lengths += lengths
-			# for i in range(len(reset)):
-			# 	if reset[i] == 1.0:
-			# 		states[:,:,i,:] = init_states[:,:,i,:]
-			# 		sentence_ppls.append(np.exp(acc_loss[i]/acc_lengths[i]))
-			# 		acc_loss[i] = acc_lengths[i] = 0.0
 		
 		b += 1
 
@@ -174,12 +171,10 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	batch_loader.reset_pointers()
 	if mode == 'val':
 		# find metric from accumulated metrics of sentences
-		# final_metric = np.mean(sentence_ppls)
 		final_metric = np.exp(np.mean(acc_loss)/b)
 		best_metric = model.best_metric.eval()
-		# print("Sentence-wise perplexities\n", sentence_ppls)
-		logger.info("(Averaged) Evaluation metric = %.4f", final_metric)
-		logger.info("Best metric = %.4f", best_metric)
+		logger.info("(Averaged) Evaluation metric = %.3f", final_metric)
+		logger.info("Best metric = %.3f", best_metric)
 		if final_metric < best_metric:
 			logger.info("Metric improved, saving best model")
 			# Store best metric in the model

@@ -8,11 +8,12 @@ import os, sys
 class DataLoader(object):
 	"""Contains functionality to convert tokens to integers."""
 
-	def __init__(self, data_dir, mode='train', tokenize_func=None, encode_func=None):
+	def __init__(self, data_dir, mode='train', tokenize_func=None, encode_func=None, word_markers=True, max_word_length=65):
 		"""Standard __init__ method."""
 		self.tokenize_func = tokenize_func
 		self.encode_func = encode_func
 		self.mode = mode
+		self.word_markers = word_markers
 
 		if mode == 'train':
 			input_path = os.path.join(data_dir,'train.txt')
@@ -26,7 +27,12 @@ class DataLoader(object):
 				val_text = f.read()
 
 			# Convert text to tokens
-			tokens, vocabs = tokenize_func(train_data=train_text, val_data=val_text, save_dir=data_dir)
+			tokens, vocabs = tokenize_func(
+				train_data=train_text, 
+				val_data=val_text, 
+				save_dir=data_dir, 
+				word_markers=self.word_markers,
+				max_word_length=max_word_length)
 			# Store data and vocabular[y|ies]
 			self.data = tokens
 			self.vocabs = vocabs
@@ -38,7 +44,11 @@ class DataLoader(object):
 				test_text = f.read()
 			
 			# Convert text to tokens
-			tokens, vocabs = tokenize_func(test_data=test_text, save_dir=data_dir)
+			tokens, vocabs = tokenize_func(
+				test_data=test_text, 
+				save_dir=data_dir, 
+				word_markers=self.word_markers,
+				max_word_length=max_word_length)
 			# Store data
 			self.data = tokens
 			self.vocabs = vocabs
@@ -69,11 +79,13 @@ class BatchLoader(object):
 		raw_data = raw_data[:self.num_batches * self.batch_size * self.timesteps]
 		self.x_batches = self.data_loader.encode_func(
 			np.asarray(raw_data).reshape([self.batch_size, -1, self.timesteps]).transpose([0,2,1]),
-			self.data_loader.vocabs
+			self.data_loader.vocabs,
+			self.data_loader.word_markers
 		)
 		self.y_batches = self.data_loader.encode_func(
 			np.asarray(raw_data[1:] + [raw_data[0]]).reshape([self.batch_size, -1, self.timesteps]).transpose([0,2,1]),
-			self.data_loader.vocabs
+			self.data_loader.vocabs,
+			self.data_loader.word_markers
 		)
 
 		self.reset_pointers()		
@@ -82,48 +94,8 @@ class BatchLoader(object):
 		"""
 		Output the next batch.
 		Returns:
-			x, y, lengths, reset, end
+			x, y, end
 		"""
-		
-		# if self.update_sentences:
-		# 	idx = [min(x, self.num_batches-1) for x in self.batch_pointer]
-		# 	self.sentences = self.data[self.indices[idx, np.arange(self.batch_size, dtype=int)]]
-		# 	for i in range(len(self.sentences)):
-		# 		self.sentences[i] = ['<s>'] + self.sentences[i] + ['</s>']
-		# 	self.update_sentences = False
-		
-		# reset = self.reset_reqd
-		# x = y = np.empty([self.batch_size, self.timesteps], dtype=object)
-		# lengths = np.zeros(self.batch_size, dtype=int)
-		# batch_over = [False]*self.batch_size
-
-		# for i in range(self.batch_size):
-		# 	if self.batch_pointer[i] == self.num_batches:
-		# 		batch_over[i] = True
-		# 		x[i] = y[i] = ['<pad>']*self.timesteps
-		# 		self.reset_reqd[i] = 1.0
-		# 		continue
-
-		# 	l = len(self.sentences[i][self.word_pointer[i]:-1])
-		# 	if l <= self.timesteps:
-		# 		x[i] = self.sentences[i][self.word_pointer[i]:-1] + ['<pad>']*(self.timesteps - l)
-		# 		y[i] = self.sentences[i][self.word_pointer[i]+1:] + ['<pad>']*(self.timesteps - l)
-		# 		lengths[i] = l
-		# 		self.reset_reqd[i] = 1.0
-		# 		self.batch_pointer[i] += 1
-		# 		self.update_sentences = True
-		# 		self.word_pointer[i] = 0
-		# 	else:
-		# 		x[i] = self.sentences[i][self.word_pointer[i]:self.timesteps]
-		# 		y[i] = self.sentences[i][self.word_pointer[i]+1:self.timesteps+1]
-		# 		lengths[i] = self.timesteps
-		# 		self.reset_reqd[i] = 0.0
-		# 		self.word_pointer[i] += self.timesteps
-
-		# x = self.data_loader.encode_func(x, self.data_loader.vocabs)
-		# y = self.data_loader.encode_func(y, self.data_loader.vocabs)
-
-		# return x, y, lengths, reset, all(batch_over)
 		self.pointer += 1
 		if self.pointer > self.num_batches:
 			return self.x_batches[:,:,0], self.y_batches[:,:,0], True
@@ -135,21 +107,3 @@ class BatchLoader(object):
 		Function to set up data members for new epoch.
 		"""
 		self.pointer = 0
-
-		# self.data = np.asarray(self.data)
-		# # shuffle training data
-		# np.random.shuffle(self.data)
-		# # calculate number of groups
-		# self.num_batches = len(self.data) // self.batch_size
-		# # neglect trailing sentences
-		# self.data = self.data[:self.num_batches*self.batch_size]
-		# # create groups of indices
-		# self.indices = np.random.choice(len(self.data), [self.num_batches, self.batch_size], replace=False)
-		# # create independent pointers for each member of a batch
-		# self.batch_pointer = np.zeros(self.batch_size, dtype=int)
-		# # create pointer for word of each batch-member
-		# self.word_pointer = np.zeros(self.batch_size, dtype=int)
-		# # boolean array indicating whether states need to be reset
-		# self.reset_reqd = np.zeros(self.batch_size)
-		# # boolean to indicate whether to update sentences
-		# self.update_sentences = True

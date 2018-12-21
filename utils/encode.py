@@ -27,7 +27,7 @@ def char_encoder(tokens, vocabs):
     return [{0:None, 1: vocabs['chars'][c]} for c in tokens]
 
 """ Custom encoder for LMMRL """
-def lmmrl_encoder(tokens, vocabs):
+def lmmrl_encoder(tokens, vocabs, word_markers=True):
     encoded_arr = np.empty_like(tokens, dtype=object)
     it = np.nditer(tokens, flags=['multi_index', 'refs_ok'])
     while not it.finished:
@@ -38,13 +38,17 @@ def lmmrl_encoder(tokens, vocabs):
         else:
             encoding[0] = vocabs['words'][w]
         # encode characters
-        encoding[2] = [vocabs['chars']['<w>']]
+        if word_markers:
+            encoding[2] = [vocabs['chars']['<w>']]
+        else:
+            encoding[2] = []
         for c in w:
             if c not in vocabs['chars']:
                 encoding[2].append(vocabs['chars']['<unk>'])
             else:
                 encoding[2].append(vocabs['chars'][c])
-        encoding[2].append(vocabs['chars']['</w>'])
+        if word_markers:
+            encoding[2].append(vocabs['chars']['</w>'])
         encoded_arr[it.multi_index] = encoding
         it.iternext()
     return encoded_arr

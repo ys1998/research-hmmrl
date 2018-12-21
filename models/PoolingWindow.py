@@ -22,7 +22,6 @@ class Model(object):
 			self._lengths = tf.placeholder(tf.int32, [None, config.timesteps], name="word_lengths")
 			self._word_idx = tf.placeholder(tf.int32, [2, None, config.timesteps], name="word_indices")
 			self._states = tf.placeholder(tf.float32, [config.n_layers, 2, None, config.num_units], name="lstm_states")
-			# self._valid_tsteps = tf.placeholder(tf.int32, [None], name="valid_timesteps")
 
 			# Parameters
 			self._batch_size = tf.placeholder_with_default(20, shape=[], name="batch_size")
@@ -39,9 +38,7 @@ class Model(object):
 			# Other variables
 			self.config = config
 			inp_words, targets = tf.unstack(self._word_idx)
-			# inp_words = tf.reshape(inp_words, [-1, config.timesteps, 1])
 			inp_words = tf.expand_dims(inp_words, axis=2)
-			# targets = tf.reshape(targets, [-1, config.timesteps])
 
 			# Create embeddings
 			with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
@@ -63,8 +60,6 @@ class Model(object):
 				mask = tf.sequence_mask(self._lengths, maxlen=config.max_word_length, dtype=tf.float32)
 				char_vecs = tf.tile(tf.expand_dims(mask, axis=2), [1, 1, config.char_dims, 1])*char_vecs
 
-				# char_vecs = tf.reshape(char_vecs, [-1, config.timesteps, config.char_dims, config.max_word_length])
-
 			# Apply convolution
 			with tf.variable_scope("convolution", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_uniform(-0.05, 0.05)):
 				self.conv_units = [tf.layers.Conv2D(
@@ -79,7 +74,8 @@ class Model(object):
 					state_sizes=[config.num_units for _ in range(config.n_layers)],
 					vec_size=config.num_dims,
 					k=config.sliding_window_size,
-					M=config.max_word_length
+					M=config.max_word_length,
+					arch=config.arch
 				) for n_fts in config.kernel_features]
 
 			###############################################################################################
@@ -120,8 +116,7 @@ class Model(object):
 				outputs, fstates = tf.nn.dynamic_rnn(
 					self.combined_unit, 
 					[char_vecs, inp_words], 
-					initial_state=[tf.contrib.rnn.LSTMStateTuple(st[0], st[1]) for st in tf.unstack(self._states, axis=0)] #,
-					# sequence_length=self._valid_tsteps
+					initial_state=[tf.contrib.rnn.LSTMStateTuple(st[0], st[1]) for st in tf.unstack(self._states, axis=0)]
 				)
 
 				self.final_states = tf.stack([tf.stack([st.c, st.h]) for st in fstates])
@@ -135,11 +130,6 @@ class Model(object):
 
 				self.prediction = tf.nn.softmax(logits, dim=2, name="prediction")
 
-				# temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets)
-				# temp_loss has shape [batch_size, timesteps]
-				# create mask to discard effect of padding
-				# mask = tf.sequence_mask(self._valid_tsteps, config.timesteps, dtype=tf.float32)
-				# self.loss = tf.reduce_sum(mask * temp_loss, axis=1)/tf.cast(self._valid_tsteps, tf.float32)
 				self.loss = tf.reduce_sum(
 					tf.nn.sparse_softmax_cross_entropy_with_logits(
 						logits=logits, 
@@ -205,7 +195,6 @@ class Model(object):
 								[len(self.valid_cue_words), config.fine_tune_pos_words, config.word_dims]),
 					cue_word_vecs
 				)
-				# neg_vals = tf.gather(self.output_word_embedding, ft_neg_idx) * self.output_word_embedding[ft_idx]
 				neg_vals = tf.einsum('ijk,ik->ij',
 					tf.reshape(tf.gather(self.output_word_embedding, tf.reshape(ft_neg_idx, [-1])), 
 								[len(self.valid_cue_words), config.fine_tune_neg_words, config.word_dims]),
@@ -272,8 +261,7 @@ class Model(object):
 					self._lengths: word_lengths,
 					self._word_idx: word_idx,
 					self._lr: lr,
-					self._states: self.initial_states if states is None else states#,
-					# self._valid_tsteps: valid_tsteps
+					self._states: self.initial_states if states is None else states
 				})
 			self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
 			return res[0], res[1] # ignore the output of assign_op
@@ -282,16 +270,14 @@ class Model(object):
 				self._char_idx: char_idx,
 				self._lengths: word_lengths,
 				self._word_idx: word_idx,
-				self._states: self.initial_states if states is None else states#,
-				# self._valid_tsteps: valid_tsteps
+				self._states: self.initial_states if states is None else states
 			})
 		elif mode == 'gen':
 			return sess.run([self.prediction, self.final_states], feed_dict = {
 				self._char_idx: char_idx,
 				self._lengths: word_lengths,
 				self._word_idx: word_idx,
-				self._states: self.initial_states if states is None else states#,
-				# self._valid_tsteps: valid_tsteps
+				self._states: self.initial_states if states is None else states
 			})
 
 	def fine_tune(self, sess):

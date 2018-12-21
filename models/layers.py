@@ -9,66 +9,65 @@ from collections import deque
 
 class PoolingWindow(object):
 	_cntr = 0
-	""" 
-	Constructor for attention-based pooling window.
-	
-	ngram       - ngram value for which this pooling window is being used
-	state_size  - list of LSTM state sizes, one for each layer
-	output_size - length of output feature vector
-	vec_size    - final word vector size (after concatenation)
-	k           - size of sliding window over word vectors
-	M           - maximum word length (width of word matrix)
-
-	Creates and initializes variables for parameters.
-	"""
-	def __init__(self, num_features, state_sizes, vec_size, k, M):
+	def __init__(self, num_features, state_sizes, vec_size, k, M, arch=[True, True, True]):
 		self.state_sizes = state_sizes
 		self.num_features = num_features
 		self.vec_size = vec_size
 		self.max_word_len = M
+
+		# architecture details
+		self.allow_gate = arch[0]
+		self.allow_states = arch[1]
+		self.allow_prev = arch[2]
 		
 		PoolingWindow._cntr += 1
 
 		# dict to store all weights
 		self.weights = {}
 
-		with tf.variable_scope('PoolingWindow_' + str(PoolingWindow._cntr), reuse=tf.AUTO_REUSE):
+		with tf.variable_scope('PoolingWindow', reuse=tf.AUTO_REUSE):
 			# state -> attention
-			for i in range(len(self.state_sizes)):
-				self.weights['W_l' + str(i+1)] = tf.get_variable(
-					'W_l' + str(i+1), 
-					[self.state_sizes[i], self.max_word_len], 
-					initializer=tf.initializers.random_normal(stddev=1e-3), 
-					trainable=True
-				)
+			if self.allow_states:
+				for i in range(len(self.state_sizes)):
+					self.weights['W_l' + str(i+1)] = tf.get_variable(
+						'W_l' + str(i+1), 
+						[self.state_sizes[i], self.max_word_len], 
+						initializer=tf.initializers.random_normal(stddev=1e-3), 
+						trainable=True
+					)
+
 			# word vec -> attention
-			for i in range(k):
-				self.weights['W_v' + str(i+1)] = tf.get_variable(
-					'W_v' + str(i+1),
-					[self.vec_size, self.max_word_len],
+			if self.allow_prev:
+				for i in range(k):
+					self.weights['W_v' + str(i+1)] = tf.get_variable(
+						'W_v' + str(i+1),
+						[self.vec_size, self.max_word_len],
+						initializer=tf.initializers.random_normal(stddev=1e-3), 
+						trainable=True
+					)
+			# bias
+			if self.allow_prev or self.allow_states:
+				self.weights['b'] = tf.get_variable(
+					'b', 
+					[1, self.max_word_len],
+					initializer=tf.initializers.zeros,
+					trainable=True
+				)
+
+			# gate; controls contribution of global info.
+			if self.allow_gate:
+				self.weights['Wg'] = tf.get_variable(
+					'Wg',
+					[self.max_word_len, 1],
 					initializer=tf.initializers.random_normal(stddev=1e-3), 
 					trainable=True
 				)
-			# bias
-			self.weights['b'] = tf.get_variable(
-				'b', 
-				[1, self.max_word_len],
-				initializer=tf.initializers.zeros,
-				trainable=True
-			)
-			# gate; controls contribution of global info.
-			self.weights['Wg'] = tf.get_variable(
-				'Wg',
-				[self.max_word_len, 1],
-				initializer=tf.initializers.random_normal(stddev=1e-3), 
-				trainable=True
-			)
-			self.weights['bg'] = tf.get_variable(
-				'bg',
-				[self.num_features, 1],
-				initializer=tf.initializers.zeros,
-				trainable=True
-			)
+				self.weights['bg'] = tf.get_variable(
+					'bg_'+str(PoolingWindow._cntr),
+					[self.num_features, 1],
+					initializer=tf.initializers.zeros,
+					trainable=True
+				)
 
 	"""
 	Creates an attention vector from current LSTM states, history of previously
@@ -80,20 +79,26 @@ class PoolingWindow(object):
 	"""
 	def __call__(self, x, lstm_states, prev_word_vecs):
 		# global attention features
-		global_feats = self.weights['b']
-		for i in range(len(self.state_sizes)):
-			global_feats = global_feats + tf.matmul(lstm_states[i].c, self.weights['W_l'+str(i+1)])
-		for i in range(len(prev_word_vecs)):
-			global_feats = global_feats + tf.matmul(prev_word_vecs[i], self.weights['W_v'+str(i+1)])
+		if self.allow_states or self.allow_prev:
+			global_feats = self.weights['b']
+			if self.allow_states:
+				for i in range(len(self.state_sizes)):
+					global_feats = global_feats + tf.matmul(lstm_states[i].c, self.weights['W_l'+str(i+1)])
+			if self.allow_prev:
+				for i in range(len(prev_word_vecs)):
+					global_feats = global_feats + tf.matmul(prev_word_vecs[i], self.weights['W_v'+str(i+1)])
 
-		# local attention features
-		local_feats = tf.one_hot(tf.argmax(x, axis=2), self.max_word_len)
-
-		# gate values
-		gate_values = tf.nn.sigmoid(tf.einsum('ijk,kl->ijl', x, self.weights['Wg']) + self.weights['bg'])
+		if self.allow_gate:
+			# local attention features
+			local_feats = tf.one_hot(tf.argmax(x, axis=2), self.max_word_len)
+			# gate values
+			gate_values = tf.nn.sigmoid(tf.einsum('ijk,kl->ijl', x, self.weights['Wg']) + self.weights['bg'])
 
 		# combined features
-		feats = gate_values*tf.expand_dims(global_feats, axis=1) + (1-gate_values)*local_feats
+		if self.allow_gate:
+			feats = gate_values*tf.expand_dims(global_feats, axis=1) + (1-gate_values)*local_feats
+		else:
+			feats = tf.expand_dims(global_feats, axis=1)
 
 		# final attention vector
 		attention = tf.nn.softmax(feats, dim=2)
