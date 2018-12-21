@@ -115,7 +115,7 @@ def train(data_dir, save_dir, best_dir, config):
 		
 		# Finalize graph to prevent memory leakage
 		sess.graph.finalize()
-		last_val_ppl = 1000
+		last_val_ppl = 10000
 		
 		for epoch in range(start_epoch, num_epochs):
 			logger.info("Epoch %d / %d", epoch+1, num_epochs)

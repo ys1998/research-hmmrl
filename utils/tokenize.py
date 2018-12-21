@@ -114,7 +114,7 @@ def lmmrl_tokenizer(
 
     if test_data is None:
         # process training tokens
-        tr = [x.split() for x in train_data.split('\n')]
+        tr = [[y[:max_word_length - 2*int(word_markers)] for y in x.split()] for x in train_data.split('\n')]
 
         # build/load vocabulary
         vocabs = {}
@@ -135,11 +135,8 @@ def lmmrl_tokenizer(
             freq['<unk>'] = freq['<s>'] = freq['</s>'] = 0
 
             # consider tokens present only in training set
-            for i, s in enumerate(tr):
-                for j, w in enumerate(s):
-                    if len(w) > max_word_length - 2*int(word_markers):
-                        w = w[:max_word_length - 2*int(word_markers)]
-                        tr[i][j] = w
+            for s in tr:
+                for w in s:
                     if w not in vocab:
                         vocab[w] = cntr
                         freq[w] = 1
