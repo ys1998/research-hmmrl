@@ -137,8 +137,8 @@ def lmmrl_tokenizer(
             # consider tokens present only in training set
             for i, s in enumerate(tr):
                 for j, w in enumerate(s):
-                    if len(w) > max_word_length:
-                        w = w[:max_word_length]
+                    if len(w) > max_word_length - 2*int(word_markers):
+                        w = w[:max_word_length - 2*int(word_markers)]
                         tr[i][j] = w
                     if w not in vocab:
                         vocab[w] = cntr
@@ -189,12 +189,12 @@ def lmmrl_tokenizer(
                     f.write('\n'.join(sorted(vocab.keys(), key=lambda x: vocab[x])))
 
         # data is in the form of a list of sentences
-        return  {'train':tr, 'val':[[y[:max_word_length] for y in x.split()] for x in val_data.split('\n')], 'test':None}, vocabs
+        return  {'train':tr, 'val':[[y[:max_word_length - 2*int(word_markers)] for y in x.split()] for x in val_data.split('\n')], 'test':None}, vocabs
                 
     else:
         # process test tokens
-        if save_dir is None 
-        or not os.path.exists(os.path.join(save_dir, 'word_vocab.txt')) 
+        if save_dir is None \
+        or not os.path.exists(os.path.join(save_dir, 'word_vocab.txt')) \
         or not os.path.exists(os.path.join(save_dir, 'char_vocab.txt')):
             print("Could not find vocabulary file.")
         else:
@@ -208,4 +208,4 @@ def lmmrl_tokenizer(
             # generate mapping
             vocabs['chars'] = {w:i for i,w in enumerate(vocab)}
 
-            return  {'train':None, 'val':None, 'test':[[y[:max_word_length] for y in x.split()] for x in test_data.split('\n')]}, vocabs
+            return  {'train':None, 'val':None, 'test':[[y[:max_word_length - 2*int(word_markers)] for y in x.split()] for x in test_data.split('\n')]}, vocabs
