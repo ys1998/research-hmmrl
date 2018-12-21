@@ -1,5 +1,5 @@
 # model architecture
-batch_size: 20
+batch_size: 40
 timesteps: 35
 num_dims: 1100
 n_layers: 2
