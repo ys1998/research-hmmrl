@@ -145,7 +145,7 @@ class Model(object):
 				
 				if config.optimizer == 'sgd':
 					optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
-				else if config.optimizer == 'adam':
+				elif config.optimizer == 'adam':
 					optim = tf.train.AdamOptimizer(learning_rate=self._lr)
 				
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
