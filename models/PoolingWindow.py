@@ -142,8 +142,12 @@ class Model(object):
 				tvars = tf.trainable_variables()
 				grads = tf.gradients(self.loss, tvars)
 				clipped_grads, _ = tf.clip_by_global_norm(grads, config.grad_clip)
-				optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
-				# optim = tf.train.AdamOptimizer(learning_rate=self._lr)
+				
+				if config.optimizer == 'sgd':
+					optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
+				else if config.optimizer == 'adam':
+					optim = tf.train.AdamOptimizer(learning_rate=self._lr)
+				
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 
 			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', tf.reduce_mean(self.loss))
