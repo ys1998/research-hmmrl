@@ -278,7 +278,7 @@ class HybridEmbeddings(object):
             self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
             return res[:-3] # ignore the output of assign_op
         elif mode == 'val':
-            return sess.run(self.eval_metric, feed_dict = {
+            return sess.run(self.loss, feed_dict = {
                 self._char_idx: idx,
                 self._lengths: lengths,
                 self._word_idx: np.reshape(word_idx, [2,-1]),
