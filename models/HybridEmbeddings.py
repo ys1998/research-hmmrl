@@ -158,6 +158,27 @@ class HybridEmbeddings(object):
             self.eval_metric = tf.reduce_mean(tf.exp(self.loss))    # trivial PPL
 
             self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', self.loss)
+            
+            #############################################################################################
+            # Update unknown vector
+            #############################################################################################
+            
+            mu, var = tf.nn.moments(self.input_word_embedding[3:], axes=[0])
+            dist = tf.distributions.Normal(loc=mu, scale=var)
+            update_input_word_unk = tf.assign(self.input_word_embedding[0], dist.sample())
+
+            mu1, var1 = tf.nn.moments(self.output_word_embedding[3:], axes=[0])
+            dist1 = tf.distributions.Normal(loc=mu1, scale=var1)
+            update_output_word_unk = tf.assign(self.output_word_embedding[0], dist1.sample())
+
+            if self.config.include_word_markers:
+                mu2, var2 = tf.nn.moments(self.char_embedding[4:], axes=[0])
+            else:
+                mu2, var2 = tf.nn.moments(self.char_embedding[2:], axes=[0])
+            dist2 = tf.distributions.Normal(loc=mu2, scale=var2)
+            update_char_unk = tf.assign(self.char_embedding[1], dist2.sample())
+            
+            self.update_unknown = tf.group(update_input_word_unk, update_output_word_unk, update_char_unk)
 
             ###############################################################################################
             # Fine tuning operations
@@ -278,7 +299,7 @@ class HybridEmbeddings(object):
             self.summary_writer.add_summary(res[-1], self.global_step.eval(sess))
             return res[:-3] # ignore the output of assign_op
         elif mode == 'val':
-            return sess.run(self.eval_metric, feed_dict = {
+            return sess.run(self.loss, feed_dict = {
                 self._char_idx: idx,
                 self._lengths: lengths,
                 self._word_idx: np.reshape(word_idx, [2,-1]),

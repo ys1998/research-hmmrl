@@ -13,8 +13,8 @@ from utils.tokenize import lmmrl_tokenizer
 from utils.encode import lmmrl_encoder
 
 # Import model
-# from models.HybridEmbeddings import HybridEmbeddings as Model
-from models.PoolingWindow import Model
+from models.HybridEmbeddings import HybridEmbeddings as Model
+# from models.PoolingWindow import Model
 
 tf.reset_default_graph()
 np.random.seed(1)
@@ -165,7 +165,7 @@ def test(config, model_dir, test_dir):
 		# Prepare loader
 		batch_loader.reset_pointers()
 		# Start from an empty RNN state
-		init_states = sess.run(model.initial_states, feed_dict={model._batch_size:config.batch_size})
+		init_states = sess.run(model.initial_states)
 		states = init_states
 
 		acc_loss = np.zeros(batch_loader.batch_size)
@@ -176,13 +176,13 @@ def test(config, model_dir, test_dir):
 			x, y, end_epoch = batch_loader.next_batch()
 			if end_epoch:
 				break
-			loss = model.forward(sess, config, x, y, states, mode='test')
+			loss = model.forward(sess, x, y, states, mode='val')
 			# accumulate evaluation metric here
-			acc_loss += loss*lengths
+			acc_loss += loss
 			print("Batch = %d, Average loss = %.4f" % (b, np.mean(loss)))
 			b += 1
 		
-		final_metric = np.exp(np.mean(acc_loss)/b)
+		final_metric = np.exp(np.mean(acc_loss)/(b-1))
 		print("(Averaged) Evaluation metric = %.4f" % final_metric)
 
 if __name__ == '__main__':

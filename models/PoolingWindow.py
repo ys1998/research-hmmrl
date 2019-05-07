@@ -147,7 +147,10 @@ class Model(object):
 					optim = tf.train.GradientDescentOptimizer(learning_rate=self._lr)
 				elif config.optimizer == 'adam':
 					optim = tf.train.AdamOptimizer(learning_rate=self._lr)
-				
+				elif config.optimizer == 'rmsprop':
+					optim = tf.train.RMSPropOptimizer(learning_rate=self._lr, momentum=config.momentum)
+				elif config.optimizer == 'momentum':
+					optim = tf.train.MomentumOptimizer(learning_rate=self._lr, momentum=config.momentum)
 				self.train_op = optim.apply_gradients(zip(clipped_grads, tvars), global_step=self.global_step)
 
 			self.ce_loss_summary = tf.summary.scalar('cross_entropy_loss', tf.reduce_mean(self.loss))
@@ -234,7 +237,7 @@ class Model(object):
 			self.local_initializer = tf.local_variables_initializer()
 
 			# Saver
-			self.saver = tf.train.Saver(max_to_keep=1, var_list=tf.global_variables())
+			self.saver = tf.train.Saver(max_to_keep=3, var_list=tf.global_variables())
 
 			self.ap_loss_summary = tf.summary.scalar('attract_preserve_loss', self.fine_tune_op['loss'])
 			self.summary_writer = tf.summary.FileWriter(config.save_dir + '/logs/', tf.get_default_graph())

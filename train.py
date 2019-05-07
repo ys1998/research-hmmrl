@@ -8,8 +8,8 @@ import os, sys, time, yaml, logging
 from munch import munchify
 
 # Import model
-# from models.HybridEmbeddings import HybridEmbeddings as Model
-from models.PoolingWindow import Model
+from models.HybridEmbeddings import HybridEmbeddings as Model
+# from models.PoolingWindow import Model
 # Import other utilities
 from utils.arguments import train_parser as parser
 from utils.loader import DataLoader, BatchLoader
@@ -122,6 +122,7 @@ def train(data_dir, save_dir, best_dir, config):
 			# train
 			run_epoch(sess, model, train_batch_loader, 'train', save_dir=save_dir, lr=lr)
 			# fine-tune after every epoch
+            sess.run(model.update_unknown)
 			model.fine_tune(sess)
 			# validate
 			val_ppl = run_epoch(sess, model, val_batch_loader, 'val', best_dir=best_dir)
@@ -138,7 +139,7 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 	# Prepare loader for new epoch
 	batch_loader.reset_pointers()
 	# Start from an empty RNN state
-	init_states = sess.run(model.initial_states, feed_dict={model._batch_size:model.config.batch_size})
+	init_states = sess.run(model.initial_states)
 	states = init_states
 
 	if mode == 'val':
@@ -155,13 +156,13 @@ def run_epoch(sess, model, batch_loader, mode='train', save_dir=None, best_dir=N
 			# can update the learning rate here, if required
 			# lr = 1.0
 
-			loss, states = model.forward(sess, model.config, x, y, states, lr, mode)
+			loss, states = model.forward(sess, x, y, states, lr, mode)
 			end = time.time()
 			# print the result so far on terminal
 			logger.info("Batch %d, Loss - %.4f, Time - %.2f", b, np.mean(loss), end - start)
 
 		elif mode == 'val':
-			loss = model.forward(sess, model.config, x, y, states, mode=mode)
+			loss = model.forward(sess, x, y, states, mode=mode)
 			acc_loss += loss
 		
 		b += 1
