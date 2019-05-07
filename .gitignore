@@ -8,3 +8,4 @@ save_best/
 */*/char_vocab.txt
 */*/word_freq.txt
 data/*/*.txt
+.ipynb_checkpoints
